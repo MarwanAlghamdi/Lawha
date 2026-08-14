@@ -1,0 +1,50 @@
+// Accessibility corrections to the source design.
+//
+// The mockups set `outline: none` everywhere and define no focus state at all,
+// which would make the whole app unusable by keyboard. Focus styling is added
+// back here rather than per component so it cannot be forgotten.
+
+.lw-btn,
+.lw-pill,
+.lw-input,
+[class^="lw-"] button,
+[class*=" lw-"] button,
+[class^="lw-"] a,
+[class^="lw-"] input,
+[class^="lw-"] select {
+  &:focus-visible {
+    outline: 2px solid var(--lw-accent);
+    outline-offset: 2px;
+    // The accent alone is low-contrast against the sunken surface in dark mode.
+    border-radius: inherit;
+  }
+}
+
+// Inputs additionally take the accent border the mockup specifies, so a
+// focused field reads as focused even where an outline is clipped.
+.lw-input:focus {
+  border-color: var(--lw-accent);
+}
+
+// Content that is announced but not shown — presence counts, status changes.
+.lw-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lw-dot--pulse,
+  [class^="lw-"] *,
+  [class*=" lw-"] * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

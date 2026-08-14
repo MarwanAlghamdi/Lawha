@@ -1,6 +1,34 @@
 // define `EXCALIDRAW_ASSET_PATH` as a SSOT
-const OSS_FONTS_CDN = "https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/";
-const OSS_FONTS_FALLBACK = "/";
+//
+// **Lawha serves its own fonts. There is no CDN here, and that is the point.**
+//
+// Upstream points this at `https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/`
+// with the deployment's own origin as a fallback, which is right for
+// excalidraw.com and wrong for a self-hosted board on somebody's LAN, in three
+// separate ways:
+//
+//   1. **It phones a third party on every page load.** Four `<link rel=preload>`
+//      tags plus the `@font-face` sources reach DigitalOcean before anything is
+//      drawn, handing over an IP and the fact that this deployment exists. A
+//      product whose whole claim is that your boards stay on your machine must
+//      not open connections to a CDN to render its own UI.
+//   2. **It is slow exactly where it is least affordable.** Measured on the
+//      Docker stack: `DOMContentLoaded` at 141ms, `load` at **30,038ms** — four
+//      fonts timing out at 30s apiece. `font-display: swap` means text still
+//      appears, so this was invisible until something waited for `load`. What
+//      waited was the visual-regression suite, whose setup step timed out and
+//      could therefore never regenerate a baseline (roadmap known issues 18/29).
+//   3. **On a LAN with no route out it is pure cost.** Every font it asks the
+//      CDN for is already in the image — 267 woff2 files, including the exact
+//      hashed filenames requested. `/fonts/Excalifont/Excalifont-Regular-a88b….woff2`
+//      answers 200 with 24,956 bytes from nginx.
+//
+// So: the deployment's own origin, and nothing else. Restoring the CDN would
+// need a reason that outweighs all three.
+// Not a *fallback* any more — it is the only source, so it is named for what
+// it is. Left as a constant rather than inlined because four preload tags and
+// the asset path all have to agree.
+const LOCAL_ASSET_PATH = "/";
 
 /**
  * Custom vite plugin for auto-prefixing `EXCALIDRAW_ASSET_PATH` woff2 fonts in `excalidraw-app`.
@@ -24,9 +52,7 @@ module.exports.woff2BrowserPlugin = () => {
 
       @font-face {
         font-family: "Assistant";
-        src: url(${OSS_FONTS_CDN}fonts/Assistant/Assistant-Regular.woff2)
-            format("woff2"),
-          url(./Assistant-Regular.woff2) format("woff2");
+        src: url(./Assistant-Regular.woff2) format("woff2");
         font-weight: 400;
         style: normal;
         display: swap;
@@ -34,9 +60,7 @@ module.exports.woff2BrowserPlugin = () => {
 
       @font-face {
         font-family: "Assistant";
-        src: url(${OSS_FONTS_CDN}fonts/Assistant/Assistant-Medium.woff2)
-            format("woff2"),
-          url(./Assistant-Medium.woff2) format("woff2");
+        src: url(./Assistant-Medium.woff2) format("woff2");
         font-weight: 500;
         style: normal;
         display: swap;
@@ -44,9 +68,7 @@ module.exports.woff2BrowserPlugin = () => {
 
       @font-face {
         font-family: "Assistant";
-        src: url(${OSS_FONTS_CDN}fonts/Assistant/Assistant-SemiBold.woff2)
-            format("woff2"),
-          url(./Assistant-SemiBold.woff2) format("woff2");
+        src: url(./Assistant-SemiBold.woff2) format("woff2");
         font-weight: 600;
         style: normal;
         display: swap;
@@ -54,9 +76,7 @@ module.exports.woff2BrowserPlugin = () => {
 
       @font-face {
         font-family: "Assistant";
-        src: url(${OSS_FONTS_CDN}fonts/Assistant/Assistant-Bold.woff2)
-            format("woff2"),
-          url(./Assistant-Bold.woff2) format("woff2");
+        src: url(./Assistant-Bold.woff2) format("woff2");
         font-weight: 700;
         style: normal;
         display: swap;
@@ -67,17 +87,16 @@ module.exports.woff2BrowserPlugin = () => {
         return code.replace(
           "<!-- PLACEHOLDER:EXCALIDRAW_APP_FONTS -->",
           `<script>
-        // point into our CDN in prod, fallback to root (excalidraw.com) domain in case of issues
-        window.EXCALIDRAW_ASSET_PATH = [
-          "${OSS_FONTS_CDN}",
-          "${OSS_FONTS_FALLBACK}",
-        ];
+        // this deployment, and nowhere else — see the note at the top of this
+        // file. A string rather than a one-element array because
+        // ExcalidrawFontFace handles both and the string says "one place".
+        window.EXCALIDRAW_ASSET_PATH = "${LOCAL_ASSET_PATH}";
       </script>
 
       <!-- Preload all default fonts to avoid swap on init -->
       <link
         rel="preload"
-        href="${OSS_FONTS_CDN}fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2"
+        href="${LOCAL_ASSET_PATH}fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2"
         as="font"
         type="font/woff2"
         crossorigin="anonymous"
@@ -85,21 +104,21 @@ module.exports.woff2BrowserPlugin = () => {
       <!-- For Nunito only preload the latin range, which should be good enough for now -->
       <link
         rel="preload"
-        href="${OSS_FONTS_CDN}fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2"
+        href="${LOCAL_ASSET_PATH}fonts/Nunito/Nunito-Regular-XRXI3I6Li01BKofiOc5wtlZ2di8HDIkhdTQ3j6zbXWjgeg.woff2"
         as="font"
         type="font/woff2"
         crossorigin="anonymous"
       />
       <link
         rel="preload"
-        href="${OSS_FONTS_CDN}fonts/Assistant/Assistant-SemiBold.woff2"
+        href="${LOCAL_ASSET_PATH}fonts/Assistant/Assistant-SemiBold.woff2"
         as="font"
         type="font/woff2"
         crossorigin="anonymous"
       />
       <link
         rel="preload"
-        href="${OSS_FONTS_CDN}fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2"
+        href="${LOCAL_ASSET_PATH}fonts/ComicShanns/ComicShanns-Regular-279a7b317d12eb88de06167bd672b4b4.woff2"
         as="font"
         type="font/woff2"
         crossorigin="anonymous"

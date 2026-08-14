@@ -5,6 +5,7 @@
 !.npmrc
 !.prettierrc
 !excalidraw-app/
+!lawha-server/
 !package.json
 !public/
 !packages/
@@ -17,3 +18,13 @@
 **/build
 **/dist
 **/node_modules
+
+# The live database, its WAL, and every uploaded blob — several megabytes of
+# real user data. This exclusion has to live here, in the ROOT ignore file:
+# BuildKit reads the .dockerignore beside the build context and never a nested
+# one, so a lawha-server/.dockerignore would be silently ignored.
+lawha-server/lawha-data
+
+# Self-signed TLS material. nginx gets it through a read-only bind mount at
+# runtime (see docker-compose.yml); a private key must never enter an image.
+certs

@@ -1,0 +1,299 @@
+// The account surface. Rendered both as a page body and inside a canvas
+// dialog, so nothing here positions itself — the host does that.
+
+.lw-account-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  // The mocked aside is empty, so this is a single column at every width.
+  max-width: 560px;
+}
+
+.lw-account-panel__identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    // Long usernames must not push the avatar off the card.
+    overflow-wrap: anywhere;
+  }
+}
+
+.lw-account-panel__avatar-wrap {
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+
+.lw-account-panel__status-dot {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--lw-stroke-green);
+  border: 2.5px solid var(--lw-surface);
+}
+
+.lw-account-panel__identity-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lw-account-panel__meta {
+  font-family: var(--lw-font-mono);
+  font-size: 11px;
+  color: var(--lw-muted);
+}
+
+.lw-account-panel__danger-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// The mockup's delete card is a single row — title/description on the left,
+// the button on the right — rather than the stacked `.lw-card` default the
+// other account cards use. Compound selector on purpose: `.lw-card` sets
+// `flex-direction: column`, and a single class here would only tie with it
+// (see the specificity note on `.lw-home__sort` in LawhaHome.scss). Only
+// applied while the confirm-with-password form isn't showing — that form
+// needs the full card width, so it keeps the column stack.
+.lw-card.lw-card--danger-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  .lw-section {
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+}
+
+.lw-inline-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-danger);
+}
+
+.lw-inline-ok {
+  align-self: center;
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-stroke-green);
+}
+
+// -----------------------------------------------------------------------
+// Profile picture
+// -----------------------------------------------------------------------
+// The disc keeps the assigned colour as its background, so a picture that is
+// still loading — or a transparent PNG — reads as the same person rather than
+// as a hole.
+.lw-avatar__img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  // Photos are not square. Cropping to the disc beats letterboxing inside it.
+  display: block;
+}
+
+.lw-account-panel__avatar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 4px;
+}
+
+// A <label>, not a button — the file input inside it is the only file picker a
+// browser will open without a synthetic click.
+.lw-account-panel__avatar-btn {
+  cursor: pointer;
+  height: var(--lw-h-compact);
+  min-height: var(--lw-h-compact);
+  padding: 0 12px;
+  font-size: 12.5px;
+
+  &[aria-busy="true"] {
+    cursor: progress;
+    opacity: 0.7;
+  }
+}
+
+// -----------------------------------------------------------------------
+// Chosen colour, as a swatch grid
+// -----------------------------------------------------------------------
+// This was a read-only dot and a label: the colour was assigned at
+// registration and there was no way to change it. It is a control now.
+//
+// Wraps rather than scrolls. Twelve swatches fit one row on a desktop and
+// two on a phone, and a horizontally scrolling strip would hide half the
+// palette behind a gesture nobody knows is available.
+.lw-account-panel__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lw-account-panel__swatch {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  // A hairline on every swatch, so a pale one still reads as a disc against
+  // the card rather than dissolving into it.
+  box-shadow: 0 0 0 1.5px var(--lw-border);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+
+  &:hover {
+    transform: scale(1.08);
+  }
+
+  // The focus ring is the same shape as the selection ring on purpose: this
+  // is a radiogroup, so arrowing through it MOVES the selection, and a focus
+  // style that looked different from a chosen style would suggest otherwise.
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--lw-bg), 0 0 0 4px var(--lw-accent);
+  }
+}
+
+// Two rings with the card colour between them, rather than a tick drawn on
+// the swatch: an inked glyph has to clear contrast against twelve different
+// backgrounds, and four of them defeat white while four defeat black.
+.lw-account-panel__swatch--on {
+  box-shadow: 0 0 0 2px var(--lw-bg), 0 0 0 4px var(--lw-text);
+}
+
+// -----------------------------------------------------------------------
+// The in-canvas dialog host
+// -----------------------------------------------------------------------
+.excalidraw {
+  .lw-account-dialog-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: var(--zIndex-modal);
+    border: none;
+    padding: 0;
+    background: var(--lw-scrim);
+    cursor: default;
+  }
+
+  .lw-account-dialog {
+    position: absolute;
+    inset: 0;
+    z-index: var(--zIndex-modal);
+    display: flex;
+    justify-content: center;
+    // Scrolls the dialog rather than the canvas behind it when the panel is
+    // taller than the viewport, which it is on a phone.
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 24px 16px calc(24px + var(--sab, 0px));
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+
+  .lw-account-dialog__surface {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: 100%;
+    max-width: 560px;
+    height: fit-content;
+  }
+
+  .lw-account-dialog__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--lw-surface-98);
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-card);
+    box-shadow: var(--lw-shadow-popover);
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+  }
+
+  .lw-account-dialog__spacer {
+    flex: 1;
+  }
+}
+
+// -----------------------------------------------------------------------
+// Master-password notice
+// -----------------------------------------------------------------------
+// Loud on purpose. Acting as someone else should never be something you
+// forget you are doing.
+.lw-master-banner {
+  margin: 0;
+  border-color: var(--lw-accent);
+  background: var(--lw-chip-orange);
+  color: var(--lw-text2);
+  font-size: 13px;
+  line-height: 1.5;
+
+  strong {
+    color: var(--lw-accent-d);
+  }
+}
+
+// -----------------------------------------------------------------------
+// Admin card
+// -----------------------------------------------------------------------
+//
+// Only the two rules the reveal panel needs are still here, because it is the
+// one piece of the old card that survived the rebuild unchanged. Everything
+// else — the selectable name button, the `--on` selected row, the form that
+// hung below the list, the escrow warning panel — went with
+// `account/LawhaAdminCard.tsx` in ADR 0015: the account row is the page now,
+// so there is no selection to style and no second surface to put a form on.
+//
+// These two stay in this file rather than moving to `admin/LawhaAdmin.scss`
+// for one reason: `.lw-admin__generated-value` is loaded by both pages'
+// stylesheets today and moving it would be a change to which file wins if
+// anybody ever writes a competing rule. Not worth the risk for tidiness.
+
+.lw-admin__generated {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+// Monospace and letter-spaced, because the whole life of this string is being
+// read aloud: the alphabet already drops the characters that cannot be
+// distinguished, and a proportional font would put the rest back.
+.lw-admin__generated-value {
+  width: 100%;
+  padding: 10px 12px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-sunken);
+  color: var(--lw-text);
+  font-family: var(--lw-font-mono);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}

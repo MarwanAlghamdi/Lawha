@@ -17,6 +17,18 @@ import {
 Object.assign(globalThis, testPolyfills);
 PolyfillLocalStorage();
 
+// jsdom implements no layout, and therefore no ResizeObserver. Components that
+// measure themselves (e.g. the Lawha top bar publishing its height) would
+// otherwise throw on mount. Observations never fire, which is correct here:
+// every element in jsdom reports a zero-size box regardless.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // By default testing-library dumps the entire serialized DOM into the error
 // message whenever a `waitFor`/`getBy*` fails, which floods the test output
 // (often hundreds of lines of HTML per failure). Strip it out unless
@@ -43,6 +55,44 @@ vi.mock("@excalidraw/common", async (importOriginal) => {
 
 // mock for pep.js not working with setPointerCapture()
 HTMLElement.prototype.setPointerCapture = vi.fn();
+
+/**
+ * jsdom implements no `PointerEvent` at all.
+ *
+ * Without this, `fireEvent.pointerDown(node, { button: 0, clientX: 3 })` falls
+ * back to a plain `Event` and **silently drops every property** — no button, no
+ * coordinates, no `pointerId`. A pointer-driven gesture then reads `undefined`
+ * for all of them, which is not a subtle skew: `button !== 0` is true for
+ * `undefined`, so the handler returns before it starts and the test fails in a
+ * way that looks exactly like a product bug.
+ *
+ * `MouseEvent` is the right base because jsdom does implement it, so
+ * `clientX`/`clientY`/`button` arrive through a real constructor rather than
+ * being pasted on afterwards.
+ */
+if (typeof globalThis.PointerEvent === "undefined") {
+  class PointerEventPolyfill extends MouseEvent {
+    public pointerId: number;
+    public pointerType: string;
+    public isPrimary: boolean;
+    public width: number;
+    public height: number;
+    public pressure: number;
+
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "mouse";
+      this.isPrimary = init.isPrimary ?? true;
+      this.width = init.width ?? 1;
+      this.height = init.height ?? 1;
+      this.pressure = init.pressure ?? 0;
+    }
+  }
+
+  globalThis.PointerEvent =
+    PointerEventPolyfill as unknown as typeof globalThis.PointerEvent;
+}
 
 require("fake-indexeddb/auto");
 

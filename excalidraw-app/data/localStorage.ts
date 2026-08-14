@@ -8,6 +8,8 @@ import type { AppState } from "@excalidraw/excalidraw/types";
 
 import { STORAGE_KEYS } from "../app_constants";
 
+import { scopedAppStateKey, scopedElementsKey } from "./currentBoard";
+
 export const saveUsernameToLocalStorage = (username: string) => {
   try {
     localStorage.setItem(
@@ -39,8 +41,9 @@ export const importFromLocalStorage = () => {
   let savedState = null;
 
   try {
-    savedElements = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS);
-    savedState = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE);
+    // Board-scoped: one fixed key would hand board B the elements of board A.
+    savedElements = localStorage.getItem(scopedElementsKey());
+    savedState = localStorage.getItem(scopedAppStateKey());
   } catch (error: any) {
     // Unable to access localStorage
     console.error(error);
@@ -75,7 +78,7 @@ export const importFromLocalStorage = () => {
 
 export const getElementsStorageSize = () => {
   try {
-    const elements = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS);
+    const elements = localStorage.getItem(scopedElementsKey());
     const elementsSize = elements?.length || 0;
     return elementsSize;
   } catch (error: any) {
@@ -86,7 +89,7 @@ export const getElementsStorageSize = () => {
 
 export const getTotalStorageSize = () => {
   try {
-    const appState = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_APP_STATE);
+    const appState = localStorage.getItem(scopedAppStateKey());
     const collab = localStorage.getItem(STORAGE_KEYS.LOCAL_STORAGE_COLLAB);
 
     const appStateSize = appState?.length || 0;

@@ -1,0 +1,84 @@
+// The join page — a centred card, the same shape as sign-in.
+//
+// Not nested under `.excalidraw`: this is a page of its own, not a surface
+// inside the editor, so the specificity note in LawhaSharePopover.scss does
+// not apply here.
+
+.lw-join {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--lw-bg);
+  // Set here because this page is a bare centred card rather than a
+  // `LawhaPageShell`, and `.lw-page` is what normally carries it. Without
+  // this the whole card renders in the browser's default serif — which is
+  // exactly how it first shipped, and only a screenshot showed it.
+  font-family: var(--lw-font-sans);
+  color: var(--lw-text);
+}
+
+.lw-join__card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 396px;
+  box-sizing: border-box;
+  padding: 30px 30px 26px;
+  background: var(--lw-surface-95, var(--lw-surface));
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-modal);
+  box-shadow: 0 26px 50px -34px rgba(28, 26, 23, 0.6);
+}
+
+.lw-join__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-join__blurb {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+}
+
+.lw-join__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--lw-muted2);
+}
+
+.lw-join__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+// Spaced and monospaced to match how the code is displayed to the person
+// reading it out. Someone copying three words off a screen should see the same
+// shape in both places, or they will wonder whether they typed it wrong.
+.lw-join__input {
+  font-family: var(--lw-font-mono, ui-monospace, monospace);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.lw-join__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lw-join__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-danger, #b3261e);
+}

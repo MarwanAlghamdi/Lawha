@@ -1,0 +1,32 @@
+-- Tag colours become a palette index, like every other colour on the deployment.
+--
+-- `tags.color TEXT` has existed since 001 and holds a free-form CSS string —
+-- `z.string().trim().max(32)` in `http/routes/tags.ts`. That predates invariant
+-- 16, "colours cross the wire as palette indices, never hex", and it is the
+-- last place on the deployment still sending a hex. Folders got this right in
+-- 006 because they were built after the rule; tags never went back.
+--
+-- Why an index rather than the hex it replaces:
+--
+--   * The twelve `COLLABORATOR_PALETTE` entries were chosen so a filled chip
+--     clears WCAG AA in BOTH themes, and each carries a `hexDark` that is the
+--     pre-image of its `hex` under the canvas's dark-mode filter. A colour
+--     picked as a hex against one theme is wrong in the other, and nothing on
+--     the wire can tell you which theme it was picked in.
+--   * A second palette would be a second thing to re-verify for contrast, and
+--     would put two unrelated colour systems on one dashboard — a folder chip
+--     and a tag chip would be two different blues.
+--
+-- **The old `color` column is left in place, deliberately.** It is provably
+-- never written by the app — `createTag` takes an optional colour and its only
+-- call site passes one argument, `renameTag` sends `{ name }` — so every row
+-- should hold NULL. "Should" is not "does", and this migration is not the
+-- place to find out. Dropping it needs somebody to look at the live table
+-- first; leaving a NULL column costs nothing until then.
+--
+-- No backfill. There is no defensible hex-to-index mapping, and NULL already
+-- means "no colour chosen", which is the state every real row is in.
+--
+-- Nullable, matching `folders.color_index` from 006: "uncoloured" has to stay
+-- tellable apart from "blue", or index 0 becomes the default nobody picked.
+ALTER TABLE tags ADD COLUMN color_index INTEGER;

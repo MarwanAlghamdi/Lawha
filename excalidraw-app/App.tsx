@@ -1,11 +1,8 @@
 import {
   Excalidraw,
-  LiveCollaborationTrigger,
-  TTDDialogTrigger,
+  THEME,
   CaptureUpdateAction,
   reconcileElements,
-  useEditorInterface,
-  ExcalidrawAPIProvider,
   useExcalidrawAPI,
 } from "@excalidraw/excalidraw";
 import { trackEvent } from "@excalidraw/excalidraw/analytics";
@@ -21,8 +18,10 @@ import { ShareableLinkDialog } from "@excalidraw/excalidraw/components/Shareable
 import Trans from "@excalidraw/excalidraw/components/Trans";
 import {
   APP_NAME,
+  COLLABORATOR_PALETTE,
   EVENT,
   VERSION_TIMEOUT,
+  getCollaboratorPaletteIndex,
   debounce,
   getVersion,
   getFrame,
@@ -33,7 +32,8 @@ import {
   isDevEnv,
 } from "@excalidraw/common";
 import polyfill from "@excalidraw/excalidraw/polyfill";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { loadFromBlob } from "@excalidraw/excalidraw/data/blob";
 import { t } from "@excalidraw/excalidraw/i18n";
 
@@ -42,8 +42,6 @@ import {
   XBrandIcon,
   DiscordIcon,
   ExcalLogo,
-  usersIcon,
-  exportToPlus,
   share,
   youtubeIcon,
 } from "@excalidraw/excalidraw/components/icons";
@@ -80,32 +78,28 @@ import type { ResolutionType } from "@excalidraw/common/utility-types";
 import type { ResolvablePromise } from "@excalidraw/common/utils";
 
 import CustomStats from "./CustomStats";
+import { useAtom, useAtomValue, useAtomWithInitialValue } from "./app-jotai";
 import {
-  Provider,
-  useAtom,
-  useAtomValue,
-  useAtomWithInitialValue,
-  appJotaiStore,
-} from "./app-jotai";
-import {
-  FIREBASE_STORAGE_PREFIXES,
+  FILE_STORAGE_PREFIXES,
   isExcalidrawPlusSignedUser,
   STORAGE_KEYS,
   SYNC_BROWSER_TABS_TIMEOUT,
 } from "./app_constants";
 import Collab, {
+  activeRoomLinkAtom,
+  boardAccessAtom,
   collabAPIAtom,
   isCollaboratingAtom,
   isOfflineAtom,
+  saveStatusAtom,
 } from "./collab/Collab";
+import { LawhaTopBar } from "./lawha/chrome/LawhaTopBar";
+import { LawhaAccountDialog } from "./lawha/account/LawhaAccountDialog";
+import { useLawhaSession } from "./lawha/auth/useLawhaSession";
+
 import { AppFooter } from "./components/AppFooter";
 import { AppMainMenu } from "./components/AppMainMenu";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
-import {
-  ExportToExcalidrawPlus,
-  exportToExcalidrawPlus,
-} from "./components/ExportToExcalidrawPlus";
-import { TopErrorBoundary } from "./components/TopErrorBoundary";
 
 import {
   exportToBackend,
@@ -121,7 +115,7 @@ import {
   importUsernameFromLocalStorage,
 } from "./data/localStorage";
 
-import { loadFilesFromFirebase } from "./data/firebase";
+import { loadFilesFromBackend } from "./data/storage";
 import {
   LibraryIndexedDBAdapter,
   LibraryLocalStorageMigrationAdapter,
@@ -131,7 +125,7 @@ import {
 import { isBrowserStorageStateNewer } from "./data/tabSync";
 import { ShareDialog, shareDialogStateAtom } from "./share/ShareDialog";
 import CollabError, { collabErrorIndicatorAtom } from "./collab/CollabError";
-import { useHandleAppTheme } from "./useHandleAppTheme";
+import { useAppTheme } from "./useHandleAppTheme";
 import { getPreferredLanguage } from "./app-language/language-detector";
 import { useAppLangCode } from "./app-language/language-state";
 import DebugCanvas, {
@@ -139,15 +133,11 @@ import DebugCanvas, {
   isVisualDebuggerEnabled,
   loadSavedDebugState,
 } from "./components/DebugCanvas";
-import { AIComponents } from "./components/AI";
-import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
 
 import "./index.scss";
 
-import { ExcalidrawPlusPromoBanner } from "./components/ExcalidrawPlusPromoBanner";
-import { AppSidebar } from "./components/AppSidebar";
-
 import type { CollabAPI } from "./collab/Collab";
+import type { LawhaSaveState } from "./lawha/chrome/LawhaSaveStatus";
 
 polyfill();
 
@@ -216,8 +206,10 @@ const initializeScene = async (opts: {
   collabAPI: CollabAPI | null;
   excalidrawAPI: ExcalidrawImperativeAPI;
 }): Promise<
-  { scene: ExcalidrawInitialDataState | null } & (
-    | { isExternalScene: true; id: string; key: string }
+  {
+    scene: ExcalidrawInitialDataState | null;
+  } & ( // before that change. // `loadFilesFromBackend`, which needs one solely to read a file uploaded // at all, and the only thing left that consumes this is // `key` is nullable: a Lawha board created since ADR 0012 has no room key
+    | { isExternalScene: true; id: string; key: string | null }
     | { isExternalScene: false; id?: null; key?: null }
   )
 > => {
@@ -257,10 +249,26 @@ const initializeScene = async (opts: {
       (await openConfirmModal(shareableLinkConfirmDialog))
     ) {
       if (jsonBackendMatch) {
-        const imported = await importFromBackend(
-          jsonBackendMatch[1],
-          jsonBackendMatch[2],
-        );
+        let imported;
+        try {
+          imported = await importFromBackend(
+            jsonBackendMatch[1],
+            jsonBackendMatch[2],
+          );
+        } catch (error: any) {
+          // Surfaced through the editor's own error dialog, the same way a bad
+          // `#url=` is a few lines below. `importFromBackend` used to alert and
+          // return an empty scene, which blocked the renderer and then made an
+          // unreachable link indistinguishable from an empty board.
+          return {
+            scene: {
+              appState: {
+                errorMessage: error?.message ?? t("alerts.importBackendFailed"),
+              },
+            },
+            isExternalScene: false,
+          };
+        }
 
         scene = {
           elements: bumpElementVersions(
@@ -280,7 +288,13 @@ const initializeScene = async (opts: {
       }
       scene.scrollToContent = true;
       if (!roomLinkData) {
-        window.history.replaceState({}, APP_NAME, window.location.origin);
+        window.history.replaceState(
+          {},
+          APP_NAME,
+          // Preserve the path: under /b/<boardId> links, resetting to the
+          // origin would navigate the user off the board they just opened.
+          `${window.location.origin}${window.location.pathname}`,
+        );
       }
     } else {
       // https://github.com/excalidraw/excalidraw/issues/1919
@@ -297,10 +311,22 @@ const initializeScene = async (opts: {
       }
 
       roomLinkData = null;
-      window.history.replaceState({}, APP_NAME, window.location.origin);
+      window.history.replaceState(
+        {},
+        APP_NAME,
+        // Preserve the path: under /b/<boardId> links, resetting to the
+        // origin would navigate the user off the board they just opened.
+        `${window.location.origin}${window.location.pathname}`,
+      );
     }
   } else if (externalUrlMatch) {
-    window.history.replaceState({}, APP_NAME, window.location.origin);
+    window.history.replaceState(
+      {},
+      APP_NAME,
+      // Preserve the path: under /b/<boardId> links, resetting to the
+      // origin would navigate the user off the board they just opened.
+      `${window.location.origin}${window.location.pathname}`,
+    );
 
     const url = externalUrlMatch[1];
     try {
@@ -370,17 +396,23 @@ const initializeScene = async (opts: {
   return { scene: null, isExternalScene: false };
 };
 
-const ExcalidrawWrapper = () => {
+/**
+ * The canvas route. Mounted at both `/` and `/b/:boardId`.
+ *
+ * Exported rather than self-contained because the providers it needs
+ * (jotai, the Excalidraw API, the theme) now live above the router in
+ * routes/LawhaProviders so they survive navigating to account settings.
+ */
+export const ExcalidrawWrapper = () => {
   const excalidrawAPI = useExcalidrawAPI();
+  const navigate = useNavigate();
 
   const [errorMessage, setErrorMessage] = useState("");
   const isCollabDisabled = isRunningInIframe();
 
-  const { editorTheme, appTheme, setAppTheme } = useHandleAppTheme();
+  const { editorTheme, appTheme, setAppTheme } = useAppTheme();
 
   const [langCode, setLangCode] = useAppLangCode();
-
-  const editorInterface = useEditorInterface();
 
   // initial state
   // ---------------------------------------------------------------------------
@@ -409,6 +441,9 @@ const ExcalidrawWrapper = () => {
     return isCollaborationLink(window.location.href);
   });
   const collabError = useAtomValue(collabErrorIndicatorAtom);
+  const activeRoomLink = useAtomValue(activeRoomLinkAtom);
+  const saveStatus = useAtomValue(saveStatusAtom);
+  const boardAccess = useAtomValue(boardAccessAtom);
 
   useHandleLibrary({
     excalidrawAPI,
@@ -446,7 +481,7 @@ const ExcalidrawWrapper = () => {
       if (collabAPI?.isCollaborating()) {
         if (data.scene.elements) {
           collabAPI
-            .fetchImageFilesFromFirebase({
+            .fetchImageFilesFromBackend({
               elements: data.scene.elements,
               forceFetchFiles: true,
             })
@@ -470,13 +505,13 @@ const ExcalidrawWrapper = () => {
 
         if (data.isExternalScene) {
           if (fileIds.length) {
-            // Direct Firebase call (not through FileManager), so track manually
+            // Direct storage call (not through FileManager), so track manually
             FileStatusStore.updateStatuses(
               fileIds.map((id) => [id, "loading"]),
             );
           }
-          loadFilesFromFirebase(
-            `${FIREBASE_STORAGE_PREFIXES.shareLinkFiles}/${data.id}`,
+          loadFilesFromBackend(
+            `${FILE_STORAGE_PREFIXES.shareLinkFiles}/${data.id}`,
             data.key,
             fileIds,
           ).then(({ loadedFiles, erroredFiles }) => {
@@ -529,7 +564,10 @@ const ExcalidrawWrapper = () => {
       initialStatePromiseRef.current.promise.resolve(data.scene);
     });
 
-    const onHashChange = async (event: HashChangeEvent) => {
+    // Board links are path-based (/b/<id>#key=...), so navigating between
+    // boards fires `popstate` rather than `hashchange`. Both have to re-run
+    // scene initialisation; `#room=` and `#json=` are still hash-only changes.
+    const onLocationChange = async (event: Event) => {
       event.preventDefault();
       const libraryUrlTokens = parseLibraryTokensFromUrl();
       if (!libraryUrlTokens) {
@@ -631,13 +669,15 @@ const ExcalidrawWrapper = () => {
       }
     };
 
-    window.addEventListener(EVENT.HASHCHANGE, onHashChange, false);
+    window.addEventListener(EVENT.HASHCHANGE, onLocationChange, false);
+    window.addEventListener("popstate", onLocationChange, false);
     window.addEventListener(EVENT.UNLOAD, onUnload, false);
     window.addEventListener(EVENT.BLUR, visibilityChange, false);
     document.addEventListener(EVENT.VISIBILITY_CHANGE, visibilityChange, false);
     window.addEventListener(EVENT.FOCUS, visibilityChange, false);
     return () => {
-      window.removeEventListener(EVENT.HASHCHANGE, onHashChange, false);
+      window.removeEventListener(EVENT.HASHCHANGE, onLocationChange, false);
+      window.removeEventListener("popstate", onLocationChange, false);
       window.removeEventListener(EVENT.UNLOAD, onUnload, false);
       window.removeEventListener(EVENT.BLUR, visibilityChange, false);
       window.removeEventListener(EVENT.FOCUS, visibilityChange, false);
@@ -785,12 +825,94 @@ const ExcalidrawWrapper = () => {
 
   const isOffline = useAtomValue(isOfflineAtom);
 
-  const localStorageQuotaExceeded = useAtomValue(localStorageQuotaExceededAtom);
+  // Read-only outranks everything, then offline, then the save status.
+  //
+  // Both of the overrides exist because "Saved" is a claim a person acts on. A
+  // queued write is not a saved one, so showing it while disconnected is a lie;
+  // and on a board you cannot write to there is nothing of yours to have saved,
+  // so it is a lie of a different kind. The second case reads worst on a board
+  // whose scene failed to load, where a green "Saved" sat above a blank canvas.
+  const lawhaSaveState: LawhaSaveState = !boardAccess.canEdit
+    ? "read-only"
+    : isOffline
+    ? "offline"
+    : saveStatus.state;
 
-  const onCollabDialogOpen = useCallback(
-    () => setShareDialogState({ isOpen: true, type: "collaborationOnly" }),
-    [setShareDialogState],
+  const session = useLawhaSession();
+  const [isAccountOpen, setIsAccountOpen] = useState(false);
+
+  const lawhaAccount = useMemo(
+    () =>
+      session.user
+        ? {
+            username: session.user.username,
+            colorIndex: session.user.colorIndex,
+          }
+        : null,
+    [session.user],
   );
+
+  // Presence names otherwise arrive only inside a peer's first pointer payload,
+  // so a signed-in user who has not moved their mouse shows up to everyone else
+  // as "Joining…". Seeding from the account fixes that at the source.
+  useEffect(() => {
+    if (session.user && collabAPI) {
+      collabAPI.setUsername(session.user.username);
+    }
+  }, [session.user, collabAPI]);
+
+  // The account's colour choices, pushed into the collab layer so every pointer
+  // broadcast carries them. Without this the picker in account settings saved a
+  // preference that changed nothing: cursors were coloured by a hash of the
+  // socket id at both ends.
+  useEffect(() => {
+    collabAPI?.setPaletteChoices({
+      colorIndex: session.user?.colorIndex ?? null,
+      laserColorIndex: session.user?.laserColorIndex ?? null,
+    });
+  }, [collabAPI, session.user?.colorIndex, session.user?.laserColorIndex]);
+
+  // Peers' laser colours are resolved into a concrete hex at the moment their
+  // pointer arrives, against the theme in force then. Flipping the theme leaves
+  // every one of them holding the hex for the theme you just left — and since
+  // the interactive canvas is inverted in dark mode, that is not a shade off,
+  // it is the wrong colour. ADR 0002 accepted this as unreachable because
+  // pointers stream at 30Hz; that is only true of a peer who is *moving*, and a
+  // laser trail lingers for a second after they stop.
+  useEffect(() => {
+    collabAPI?.resolveAllPointerColors();
+  }, [collabAPI, editorTheme]);
+
+  /**
+   * Own laser colour, resolved for the current theme.
+   *
+   * The interactive canvas is inverted by a CSS filter in dark mode, so the
+   * palette carries a pre-inverted hex for exactly this. Falls back to the
+   * cursor colour, then to the hash — the same order peers resolve it in, so
+   * your laser looks the same to you as it does to them.
+   */
+  const ownLaserColor = useMemo(() => {
+    if (!session.user) {
+      return undefined;
+    }
+    const index =
+      session.user.laserColorIndex ??
+      session.user.colorIndex ??
+      getCollaboratorPaletteIndex(session.user.id);
+    const entry = COLLABORATOR_PALETTE[index];
+
+    if (!entry) {
+      return undefined;
+    }
+    return editorTheme === THEME.DARK ? entry.hexDark : entry.hex;
+  }, [session.user, editorTheme]);
+
+  // Only offered where an account is actually reachable. On a server running
+  // with LAWHA_REQUIRE_AUTH=false and registration closed there is nothing to
+  // sign in to, and a dead button is worse than no button.
+  const canSignIn = session.status === "anonymous" && session.config !== null;
+
+  const localStorageQuotaExceeded = useAtomValue(localStorageQuotaExceededAtom);
 
   // ---------------------------------------------------------------------------
   // onExport — intercepts file save to wait for pending image loads
@@ -912,36 +1034,26 @@ const ExcalidrawWrapper = () => {
         onExport={onExport}
         initialData={initialStatePromiseRef.current.promise}
         isCollaborating={isCollaborating}
+        /*
+         * A viewer's editor is read-only, and says so, rather than accepting
+         * edits that the relay and the scene write will both refuse.
+         * `viewModeEnabled` is an existing public prop of <Excalidraw>, so this
+         * widens nothing in packages/. It is a courtesy, not the enforcement:
+         * the server refuses the write either way.
+         *
+         * `undefined` rather than `false` for an editor, deliberately.
+         * `actionToggleViewMode` is only offered while this prop is undefined
+         * (packages/excalidraw/actions/actionToggleViewMode.tsx), so passing
+         * `false` would quietly take the editor's own View mode item away from
+         * everyone who can draw.
+         */
+        viewModeEnabled={boardAccess.canEdit ? undefined : true}
         onPointerUpdate={collabAPI?.onPointerUpdate}
         UIOptions={{
           canvasActions: {
             toggleTheme: true,
             export: {
               onExportToBackend,
-              renderCustomUI: excalidrawAPI
-                ? (elements, appState, files) => {
-                    return (
-                      <ExportToExcalidrawPlus
-                        elements={elements}
-                        appState={appState}
-                        files={files}
-                        name={excalidrawAPI.getName()}
-                        onError={(error) => {
-                          excalidrawAPI?.updateScene({
-                            appState: {
-                              errorMessage: error.message,
-                            },
-                          });
-                        }}
-                        onSuccess={() => {
-                          excalidrawAPI.updateScene({
-                            appState: { openDialog: null },
-                          });
-                        }}
-                      />
-                    );
-                  }
-                : undefined,
             },
           },
         }}
@@ -952,27 +1064,21 @@ const ExcalidrawWrapper = () => {
         autoFocus={true}
         theme={editorTheme}
         onThemeChange={setAppTheme}
+        laserColor={ownLaserColor}
         renderTopRightUI={(isMobile) => {
+          // Sharing and presence live in the Lawha top bar now; only the
+          // collab error indicator still belongs to the editor's own cluster.
           if (isMobile || !collabAPI || isCollabDisabled) {
+            return null;
+          }
+
+          if (!collabError.message) {
             return null;
           }
 
           return (
             <div className="excalidraw-ui-top-right">
-              {excalidrawAPI?.getEditorInterface().formFactor === "desktop" && (
-                <ExcalidrawPlusPromoBanner
-                  isSignedIn={isExcalidrawPlusSignedUser}
-                />
-              )}
-
-              {collabError.message && <CollabError collabError={collabError} />}
-              <LiveCollaborationTrigger
-                isCollaborating={isCollaborating}
-                onSelect={() =>
-                  setShareDialogState({ isOpen: true, type: "share" })
-                }
-                editorInterface={editorInterface}
-              />
+              <CollabError collabError={collabError} />
             </div>
           );
         }}
@@ -987,41 +1093,54 @@ const ExcalidrawWrapper = () => {
           }
         }}
       >
-        <AppMainMenu
-          onCollabDialogOpen={onCollabDialogOpen}
+        {/*
+          The consolidated Lawha app bar. Rendered first so it registers with
+          LayerUI before the editor's own defaults, minimising layout shift.
+        */}
+        <LawhaTopBar
+          saveState={lawhaSaveState}
+          savedAt={saveStatus.at}
+          shareLink={activeRoomLink}
           isCollaborating={isCollaborating}
-          isCollabEnabled={!isCollabDisabled}
+          onStartSession={() => collabAPI?.startCollaboration(null)}
+          /*
+           * "Leave the board", which is a different act from "stop sharing it"
+           * — the two were tangled behind one button and one native confirm.
+           * Un-sharing lives in the share panel and does not end the session;
+           * this ends the session and goes back to the dashboard.
+           */
+          onStopSession={() => {
+            collabAPI?.stopCollaboration();
+            navigate("/home");
+          }}
+          account={lawhaAccount}
+          onOpenAccount={() => setIsAccountOpen(true)}
+          onSignOut={async () => {
+            await session.signOut();
+            setIsAccountOpen(false);
+          }}
+          onSignIn={canSignIn ? () => navigate("/signin") : undefined}
+          onBack={() => navigate("/home")}
+        />
+        {/*
+          Account settings as an overlay rather than a route: navigating away
+          would unmount the editor and tear down any live session, and the brief
+          puts account settings inside the consolidated canvas UI regardless.
+        */}
+        <LawhaAccountDialog
+          open={isAccountOpen}
+          onClose={() => setIsAccountOpen(false)}
+        />
+        <AppMainMenu
           theme={appTheme}
           refresh={() => forceRefresh((prev) => !prev)}
         />
-        <AppWelcomeScreen
-          onCollabDialogOpen={onCollabDialogOpen}
-          isCollabEnabled={!isCollabDisabled}
-        />
+        <AppWelcomeScreen />
         <OverwriteConfirmDialog>
           <OverwriteConfirmDialog.Actions.ExportToImage />
           <OverwriteConfirmDialog.Actions.SaveToDisk />
-          {excalidrawAPI && (
-            <OverwriteConfirmDialog.Action
-              title={t("overwriteConfirm.action.excalidrawPlus.title")}
-              actionLabel={t("overwriteConfirm.action.excalidrawPlus.button")}
-              onClick={() => {
-                exportToExcalidrawPlus(
-                  excalidrawAPI.getSceneElements(),
-                  excalidrawAPI.getAppState(),
-                  excalidrawAPI.getFiles(),
-                  excalidrawAPI.getName(),
-                );
-              }}
-            >
-              {t("overwriteConfirm.action.excalidrawPlus.description")}
-            </OverwriteConfirmDialog.Action>
-          )}
         </OverwriteConfirmDialog>
         <AppFooter onChange={() => excalidrawAPI?.refresh()} />
-        {excalidrawAPI && <AIComponents excalidrawAPI={excalidrawAPI} />}
-
-        <TTDDialogTrigger />
         {isCollaborating && isOffline && (
           <div className="alertalert--warning">
             {t("alerts.collabOfflineWarning")}
@@ -1044,7 +1163,6 @@ const ExcalidrawWrapper = () => {
         )}
 
         <ShareDialog
-          collabAPI={collabAPI}
           onExportToBackend={async () => {
             if (excalidrawAPI) {
               try {
@@ -1060,7 +1178,19 @@ const ExcalidrawWrapper = () => {
           }}
         />
 
-        <AppSidebar />
+        {/*
+          `AppSidebar` is gone. It existed only to add two tab triggers —
+          Comments and Presentation — whose panels were Excalidraw+ signup
+          promos: a heart illustration, "14 days of free trial", and a link off
+          this network. On a self-hosted team board a tab that opens an advert
+          for a product you cannot buy from here is worse than no tab, and it
+          sat directly beside the two that do work.
+
+          Removing the component does not remove the sidebar: `LayerUI` renders
+          its own `<DefaultSidebar __fallback>`, so Search and Library are
+          exactly where they were. What changes is how you reach it — see the
+          Library item in `AppMainMenu`.
+        */}
 
         {errorMessage && (
           <ErrorDialog onClose={() => setErrorMessage("")}>
@@ -1070,47 +1200,17 @@ const ExcalidrawWrapper = () => {
 
         <CommandPalette
           customCommandPaletteItems={[
-            {
-              label: t("labels.liveCollaboration"),
-              category: DEFAULT_CATEGORIES.app,
-              keywords: [
-                "team",
-                "multiplayer",
-                "share",
-                "public",
-                "session",
-                "invite",
-              ],
-              icon: usersIcon,
-              perform: () => {
-                setShareDialogState({
-                  isOpen: true,
-                  type: "collaborationOnly",
-                });
-              },
-            },
-            {
-              label: t("roomDialog.button_stopSession"),
-              category: DEFAULT_CATEGORIES.app,
-              predicate: () => !!collabAPI?.isCollaborating(),
-              keywords: [
-                "stop",
-                "session",
-                "end",
-                "leave",
-                "close",
-                "exit",
-                "collaboration",
-              ],
-              perform: () => {
-                if (collabAPI) {
-                  collabAPI.stopCollaboration();
-                  if (!collabAPI.isCollaborating()) {
-                    setShareDialogState({ isOpen: false });
-                  }
-                }
-              },
-            },
+            /*
+              No "Live collaboration" and no "Stop session" here either.
+
+              The command palette was the third way to reach a surface that
+              started sessions without an owner check, and its "Stop session"
+              had the same trap as the dialog's: it left the room without
+              turning sharing off, so pressing it felt like un-sharing a board
+              that was still reachable by anyone with the link. Both live in
+              the top bar's Share panel now — the one place that knows whether
+              you own this board.
+            */
             {
               label: t("labels.share"),
               category: DEFAULT_CATEGORIES.app,
@@ -1128,7 +1228,7 @@ const ExcalidrawWrapper = () => {
                 "invite",
               ],
               perform: async () => {
-                setShareDialogState({ isOpen: true, type: "share" });
+                setShareDialogState({ isOpen: true });
               },
             },
             {
@@ -1216,23 +1316,6 @@ const ExcalidrawWrapper = () => {
               : [ExcalidrawPlusCommand, ExcalidrawPlusAppCommand]),
 
             {
-              label: t("overwriteConfirm.action.excalidrawPlus.button"),
-              category: DEFAULT_CATEGORIES.export,
-              icon: exportToPlus,
-              predicate: true,
-              keywords: ["plus", "export", "save", "backup"],
-              perform: () => {
-                if (excalidrawAPI) {
-                  exportToExcalidrawPlus(
-                    excalidrawAPI.getSceneElements(),
-                    excalidrawAPI.getAppState(),
-                    excalidrawAPI.getFiles(),
-                    excalidrawAPI.getName(),
-                  );
-                }
-              },
-            },
-            {
               label: t("labels.installPWA"),
               category: DEFAULT_CATEGORIES.app,
               predicate: () => !!pwaEvent,
@@ -1260,23 +1343,3 @@ const ExcalidrawWrapper = () => {
     </div>
   );
 };
-
-const ExcalidrawApp = () => {
-  const isCloudExportWindow =
-    window.location.pathname === "/excalidraw-plus-export";
-  if (isCloudExportWindow) {
-    return <ExcalidrawPlusIframeExport />;
-  }
-
-  return (
-    <TopErrorBoundary>
-      <Provider store={appJotaiStore}>
-        <ExcalidrawAPIProvider>
-          <ExcalidrawWrapper />
-        </ExcalidrawAPIProvider>
-      </Provider>
-    </TopErrorBoundary>
-  );
-};
-
-export default ExcalidrawApp;

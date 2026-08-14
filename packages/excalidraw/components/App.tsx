@@ -360,7 +360,7 @@ import { exportCanvas, loadFromBlob } from "../data";
 import Library, { distributeLibraryItemsOnSquareGrid } from "../data/library";
 import { restoreAppState, restoreElements } from "../data/restore";
 import { getCenter, getDistance } from "../gesture";
-import { History } from "../history";
+import { History, HistoryChangedEvent } from "../history";
 import { defaultLang, getLanguage, languages, setLanguage, t } from "../i18n";
 
 import {
@@ -436,6 +436,7 @@ import { AppArrowText } from "./App.arrowText";
 import { AppCursor } from "./App.cursor";
 import { AppDrawShape } from "./App.drawshape";
 import { AppFlowchart } from "./App.flowchart";
+import { AppPan, PAN_INTENT_THRESHOLD_PX } from "./App.pan";
 import { AppViewport, RIGHT_SIDEBAR_WIDTH } from "./App.viewport";
 import BraveMeasureTextError from "./BraveMeasureTextError";
 import { ContextMenu, CONTEXT_MENU_SEPARATOR } from "./ContextMenu";
@@ -466,6 +467,7 @@ import type {
 
 import type { ClipboardData, PastedMixedContent } from "../clipboard";
 import type { ExportedElements } from "../data";
+import type { HistoryDelta } from "../history";
 import type { ContextMenuItems } from "./ContextMenu";
 
 import type {
@@ -685,6 +687,14 @@ class App extends React.Component<AppProps, AppState> {
   public flowchart: AppFlowchart = new AppFlowchart(this);
   public cursor: AppCursor = new AppCursor(this);
   public arrowText: AppArrowText = new AppArrowText(this);
+  public pan: AppPan = new AppPan(this);
+  /**
+   * Open for the length of a right-button pan session. The native context
+   * menu fires at pointer-down on some platforms and pointer-up on others,
+   * and neither moment can tell a drag from a click — so it is suppressed
+   * throughout and replayed at pointer-up if the press never panned.
+   */
+  private suppressContextMenuWhilePanning = false;
   public viewport: AppViewport = new AppViewport(this, {
     getContainer: () => this.excalidrawContainerRef.current,
     getStylesPanelMode: () => this.stylesPanelMode,
@@ -769,6 +779,8 @@ class App extends React.Component<AppProps, AppState> {
         this.getSceneElementsMapIncludingDeleted,
       history: {
         clear: this.resetHistory,
+        getUndoStack: this.getUndoStack,
+        restoreUndoStack: this.restoreUndoStack,
       },
       setViewport: this.viewport.setViewport,
       getViewportOffsets: this.viewport.getOffsets,
@@ -3412,6 +3424,41 @@ class App extends React.Component<AppProps, AppState> {
     this.history.clear();
   };
 
+  /** The undo stack as it stands, for persisting it. See ADR 0019. */
+  private getUndoStack = (): readonly HistoryDelta[] => this.history.undoStack;
+
+  /**
+   * Replaces the undo stack wholesale.
+   *
+   * Replace and not append: this is called once when a board opens, and an
+   * append would double the history on a remount — which React does in strict
+   * mode, so the bug would appear in development and not in production.
+   *
+   * `undoStack` is mutated in place rather than reassigned because `History`
+   * holds it as a `readonly` array reference — there is no setter to call.
+   * That mutation bypasses `History`'s own bookkeeping, so
+   * `onHistoryChangedEmitter` is triggered manually here: the undo button
+   * reads its enabled state off that emitter (see `actions/actionHistory.tsx`),
+   * and without this it would still show "disabled" after a restore that put
+   * entries on the stack, indistinguishable from the feature being broken.
+   *
+   * The redo stack is deliberately left alone: nothing in this plan (tasks
+   * 1-4) ever serialises or restores it, so a persisted board should reopen
+   * with a restored undo stack and an empty redo stack, same as any other
+   * within-session state.
+   */
+  private restoreUndoStack = (deltas: readonly HistoryDelta[]) => {
+    this.history.undoStack.length = 0;
+    this.history.undoStack.push(...deltas);
+
+    this.history.onHistoryChangedEmitter.trigger(
+      new HistoryChangedEvent(
+        this.history.isUndoStackEmpty,
+        this.history.isRedoStackEmpty,
+      ),
+    );
+  };
+
   private resetStore = () => {
     this.store.clear();
   };
@@ -3789,6 +3836,7 @@ class App extends React.Component<AppProps, AppState> {
     this.imageCache.clear();
     this.resizeObserver?.disconnect();
     this.unmounted = true;
+    this.pan.destroy();
     this.viewport.destroy();
     this.removeEventListeners();
     this.library.destroy();
@@ -8938,6 +8986,10 @@ class App extends React.Component<AppProps, AppState> {
       !(
         gesture.pointers.size <= 1 &&
         (((event.button === POINTER_BUTTON.WHEEL ||
+          // a right-button drag pans (ADR 0013). Whether it was a drag or a
+          // plain right-click is not knowable yet, so the session starts
+          // either way and `teardown` decides — see `isSecondaryButton` below
+          event.button === POINTER_BUTTON.SECONDARY ||
           (event.button === POINTER_BUTTON.MAIN && isHoldingSpace) ||
           isHandToolActive(this.state)) &&
           // reachable while non-interactive when the active tool is allowed
@@ -8950,6 +9002,19 @@ class App extends React.Component<AppProps, AppState> {
       return false;
     }
     isPanning = true;
+    // cancels any momentum still in flight and opens a fresh sample buffer,
+    // so a glide can never survive into the next gesture
+    this.pan.begin();
+
+    // A right-button session may turn out to be a plain right-click, so it
+    // holds back the grabbing cursor and suppresses the native context menu
+    // until `teardown` knows which it was.
+    const isSecondaryButton = event.button === POINTER_BUTTON.SECONDARY;
+    const panOrigin = { x: event.clientX, y: event.clientY };
+    let hasPanned = !isSecondaryButton;
+    if (isSecondaryButton) {
+      this.suppressContextMenuWhilePanning = true;
+    }
 
     // due to event.preventDefault below, container wouldn't get focus
     // automatically
@@ -8970,13 +9035,26 @@ class App extends React.Component<AppProps, AppState> {
         ? false
         : /Linux/.test(window.navigator.platform);
 
-    this.cursor.set(CURSOR_TYPE.GRABBING);
+    if (!isSecondaryButton) {
+      this.cursor.set(CURSOR_TYPE.GRABBING);
+    }
     let { clientX: lastX, clientY: lastY } = event;
     const onPointerMove = withBatchedUpdatesThrottled((event: PointerEvent) => {
       const deltaX = lastX - event.clientX;
       const deltaY = lastY - event.clientY;
       lastX = event.clientX;
       lastY = event.clientY;
+      this.pan.sample(event.clientX, event.clientY);
+
+      if (
+        !hasPanned &&
+        Math.hypot(event.clientX - panOrigin.x, event.clientY - panOrigin.y) >
+          PAN_INTENT_THRESHOLD_PX
+      ) {
+        // far enough that this is a pan and not a click that wobbled
+        hasPanned = true;
+        this.cursor.set(CURSOR_TYPE.GRABBING);
+      }
 
       /*
        * Prevent paste event if we move while middle clicking on Linux.
@@ -9029,14 +9107,35 @@ class App extends React.Component<AppProps, AppState> {
             cursorButton: "up",
           },
           // Runs after the trailing throttled pointer move has committed, so
-          // the snap-back starts from the pan's actual final viewport.
-          this.viewport.releaseOverscroll,
+          // the snap-back starts from the pan's actual final viewport. With
+          // momentum that viewport is later still: a glide keeps travelling
+          // after release, so it owns the snap-back when it launches (ADR
+          // 0013).
+          () => {
+            if (!this.pan.release()) {
+              this.viewport.releaseOverscroll();
+            }
+          },
         );
         this.savePointer(event.clientX, event.clientY, "up");
         window.removeEventListener(EVENT.POINTER_MOVE, onPointerMove);
         window.removeEventListener(EVENT.POINTER_UP, teardown);
         window.removeEventListener(EVENT.BLUR, teardown);
         onPointerMove.flush();
+
+        if (isSecondaryButton) {
+          this.suppressContextMenuWhilePanning = false;
+          if (!hasPanned && "nativeEvent" in event) {
+            // The right-button press never became a pan, so it was a plain
+            // right-click and its menu is owed. The browser's own moment for
+            // it was suppressed above, because on some platforms it arrives
+            // at pointer-down — before there is any movement to judge. Only
+            // a React synthetic event can be replayed: `handleCanvasContextMenu`
+            // reads `event.nativeEvent`, which the raw `MouseEvent` that
+            // `textWysiwyg` passes does not have.
+            this.handleCanvasContextMenu(event);
+          }
+        }
       }),
     );
     window.addEventListener(EVENT.BLUR, teardown);
@@ -13146,6 +13245,12 @@ class App extends React.Component<AppProps, AppState> {
     // mode we stop here so it cannot be mistaken for Excalidraw's own menu.
     event.preventDefault();
     if (!this.isInteractionEnabled()) {
+      return;
+    }
+
+    // A right-button pan session is open and it is not yet known whether it
+    // will pan. The menu is replayed from `teardown` if it does not.
+    if (this.suppressContextMenuWhilePanning) {
       return;
     }
 

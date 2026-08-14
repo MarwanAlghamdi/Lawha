@@ -1,0 +1,514 @@
+// The consolidated app bar, floating over a full-bleed canvas.
+
+// ---------------------------------------------------------------------------
+// The bar's geometry, published on the editor root rather than kept private to
+// `.lw-topbar`.
+//
+// lawha-editor.scss lifts Excalidraw's own main-menu trigger out of the row
+// below the bar and into it, and the two have to agree on where that row is to
+// the pixel. A custom property inherits downwards, never sideways, and the
+// trigger is a sibling of the bar several levels away — so the only place both
+// can read one value from is their common ancestor, the editor container.
+// ---------------------------------------------------------------------------
+.excalidraw {
+  // Inline padding is the editor's own container padding, so the hamburger, the
+  // back button and the toolbar underneath all land on one vertical edge. It
+  // was 18px before the lift, which put the bar 2px inside everything else.
+  --lawha-topbar-pad-x: var(--editor-container-padding);
+  // Honours the notch; the safe-area vars are declared in styles.scss.
+  --lawha-topbar-pad-top: max(14px, var(--sat, 0px));
+  --lawha-topbar-pad-bottom: 14px;
+  --lawha-topbar-gap-x: 12px;
+  // Clearance between the bar and whatever starts below it.
+  --lawha-topbar-gap: 14px;
+}
+
+// Compound on purpose (invariant 12). `.excalidraw--mobile` is a *second* class
+// on the same element that carries `.excalidraw`, so a single-class override
+// would only tie with the block above and the winner would be decided by @use
+// order in styles/index.scss — which is how the phone sheet once inherited the
+// popover's width. It is keyed on the package's class rather than on
+// `.lw-topbar--phone` because the lifted trigger is not a descendant of the bar
+// and could not read a property declared there; App.tsx:2344 sets this class
+// from the same `getFormFactor` that `useLawhaFormFactor` measures with.
+.excalidraw.excalidraw--mobile {
+  --lawha-topbar-pad-top: max(10px, var(--sat, 0px));
+  --lawha-topbar-pad-bottom: 10px;
+  --lawha-topbar-gap-x: 8px;
+}
+
+.excalidraw {
+  .lw-topbar {
+    position: absolute;
+    top: 0;
+    inset-inline: 0;
+    // Above the toolbar and menu islands, below dialogs (1000) and popups.
+    z-index: var(--zIndex-ui-main-menu);
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px var(--lawha-topbar-gap-x);
+
+    padding-block: var(--lawha-topbar-pad-top) var(--lawha-topbar-pad-bottom);
+    // The inline-start padding is a reserved slot for Excalidraw's main-menu
+    // trigger, which lawha-editor.scss lifts into this row so the bar reads
+    // [hamburger][back][title]…[avatars] instead of spilling onto two rows.
+    //
+    // It is padding and not a rendered placeholder for two reasons. The bar's
+    // children are the only part of it that takes pointer events, so a child
+    // sitting over the hamburger would swallow its clicks even though the bar
+    // itself is transparent to them. And the trigger cannot be moved into the
+    // bar in the DOM at all — see the long note in lawha-editor.scss.
+    padding-inline: calc(
+        var(--lawha-topbar-pad-x) + var(--lawha-menu-trigger-size) +
+          var(--lawha-topbar-gap-x)
+      )
+      var(--lawha-topbar-pad-x);
+
+    // Off on the bar, on for each control: a drag starting in the empty middle
+    // still pans the canvas.
+    pointer-events: none;
+
+    > *,
+    > * > * {
+      pointer-events: auto;
+    }
+  }
+
+  .lw-topbar__spacer {
+    flex: 1;
+    min-width: 12px;
+    pointer-events: none;
+  }
+
+  // -----------------------------------------------------------------------
+  // Board title
+  // -----------------------------------------------------------------------
+  .lw-topbar__title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: var(--lw-h-md);
+    padding: 0 14px;
+    border-radius: var(--lw-r-lg);
+    border: var(--lw-border-width) solid var(--lw-border);
+    background: var(--lw-surface-94);
+    max-width: min(42vw, 420px);
+  }
+
+  .lw-topbar__title-button {
+    border: none;
+    background: none;
+    padding: 0;
+    font-family: var(--lw-font-sans);
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--lw-text);
+    cursor: text;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--lw-accent);
+    }
+  }
+
+  .lw-topbar__title-input {
+    border: none;
+    background: none;
+    padding: 0;
+    min-height: 0;
+    font-family: var(--lw-font-sans);
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--lw-text);
+    width: 100%;
+    outline: none;
+  }
+
+  // -----------------------------------------------------------------------
+  // Presence
+  // -----------------------------------------------------------------------
+  .lw-presence {
+    gap: 7px;
+    padding: 0 12px;
+  }
+
+  .lw-presence__avatars {
+    display: flex;
+    align-items: center;
+    // Slight overlap reads as a group rather than a list.
+    > * + * {
+      margin-inline-start: -6px;
+    }
+  }
+
+  .lw-presence__count {
+    font-size: 11px;
+    color: var(--lw-muted);
+  }
+
+  // Same `border-radius: inherit` trap as the laser swatches: the avatars are
+  // buttons inside a container with no radius, so tabbing to one squared it
+  // off. The stack overlaps them, which made the corners land on a neighbour.
+  .lw-presence .lw-avatar:focus-visible {
+    border-radius: 50%;
+  }
+
+  // The person this viewport is following.
+  //
+  // A ring rather than a colour change, because the avatar's background is the
+  // collaborator's assigned colour and overriding it would break the one thing
+  // that ties an avatar to its cursor on the canvas (ADR 0001). `box-shadow`
+  // rather than `border`, so the 28px disc does not resize and the stack's
+  // -6px overlap stays put.
+  //
+  // The ring is not the only signal: the button carries `aria-pressed`, its
+  // label switches to "Stop following", and the count slot beside it names the
+  // person. A state announced only in a box-shadow is a state a screen reader
+  // cannot report.
+  .lw-presence .lw-avatar--following {
+    box-shadow: 0 0 0 2px var(--lw-surface), 0 0 0 4px var(--lw-accent);
+    // Above its neighbours, or the overlap clips the ring on one side.
+    z-index: 1;
+  }
+
+  // "following Omar ✕" — a control, not a label, so leaving follow mode does
+  // not require finding the right avatar again.
+  .lw-presence__following {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11px;
+    color: var(--lw-accent);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+      color: var(--lw-accent-d);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Account
+  // -----------------------------------------------------------------------
+  .lw-account__trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--lw-h-md);
+    min-height: var(--lw-h-md);
+    padding: 0 12px 0 5px;
+    // The pill radius from the home mockup's account chip.
+    border-radius: var(--lw-r-avatar);
+    border: var(--lw-border-width) solid var(--lw-border);
+    background: var(--lw-input);
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--lw-accent);
+    }
+  }
+
+  .lw-account__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    // Only a fallback. The real colour is set inline from the account's
+    // palette index — hardcoding `--lw-presence-0` here is what made every
+    // chip blue while the canvas cursor was some other colour entirely.
+    background: var(--lw-muted);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    // A photograph is square-ish; the disc is not.
+    overflow: hidden;
+  }
+
+  // Duplicated from LawhaAccount.scss on purpose: the canvas chrome must not
+  // depend on the account page's stylesheet being in the bundle.
+  .lw-avatar__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+    object-fit: cover;
+  }
+
+  .lw-account__name {
+    font-family: var(--lw-font-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--lw-text);
+  }
+
+  // -----------------------------------------------------------------------
+  // Laser colour
+  // -----------------------------------------------------------------------
+  // The trigger itself lives in the editor's toolbar island, not here — see
+  // lawha-editor.scss for the rules that give it the toolbar's own metrics.
+  // What is left in the bar is the picker's mount anchor and, on a phone, the
+  // same trigger rendered into the overflow sheet.
+  //
+  // `display: none` and not a zero-size span: the bar is a flex row with a
+  // `gap`, and an empty flex *item* would still open one 12px gap in the
+  // middle of the controls.
+  .lw-laser-mount {
+    display: none;
+  }
+
+  .lw-laser-trigger {
+    gap: 8px;
+  }
+
+  .lw-laser-trigger__dot {
+    width: 11px;
+    height: 11px;
+  }
+
+  .lw-laser {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 262px;
+    max-width: calc(100vw - 28px);
+    padding: 16px;
+    background: var(--lw-surface-98);
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    box-shadow: var(--lw-shadow-popover);
+    z-index: var(--zIndex-ui-library);
+  }
+
+  .lw-laser__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lw-laser__heading {
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lw-text2);
+  }
+
+  // A fixed palette *laid out* as a wheel, not a continuous wheel: twelve
+  // swatches placed on a ring by hue, with the follow-my-cursor option in the
+  // middle. Positions are set inline from the palette's `hue`, so adding an
+  // entry re-spaces the ring with no CSS change.
+  .lw-laser__wheel {
+    position: relative;
+    width: 100%;
+    // A square box, so the ring is a circle at any panel width.
+    aspect-ratio: 1;
+  }
+
+  .lw-laser__swatch,
+  .lw-laser__auto {
+    position: absolute;
+    // The inline left/top are the swatch's centre.
+    transform: translate(-50%, -50%);
+    padding: 0;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    box-shadow: 0 0 0 1.5px var(--lw-border);
+    cursor: pointer;
+    transition: box-shadow 120ms ease, transform 120ms ease;
+
+    &:hover:not(:disabled) {
+      box-shadow: 0 0 0 1.5px var(--lw-muted);
+      transform: translate(-50%, -50%) scale(1.12);
+    }
+
+    &:disabled {
+      cursor: progress;
+      opacity: 0.6;
+    }
+
+    // lawha-a11y.scss gives every `[class^="lw-"] button` a focus ring plus
+    // `border-radius: inherit`, and the wheel it sits in has no radius — so a
+    // focused swatch turned into a square. Radix focuses the first control
+    // when the popover opens, which made it the *first thing* you saw.
+    &:focus-visible {
+      border-radius: 50%;
+    }
+  }
+
+  .lw-laser__swatch {
+    width: 30px;
+    height: 30px;
+  }
+
+  .lw-laser__swatch--on,
+  .lw-laser__auto--on {
+    border-color: var(--lw-surface);
+    box-shadow: 0 0 0 2.5px var(--lw-text);
+  }
+
+  .lw-laser__auto {
+    left: 50%;
+    top: 50%;
+    width: 48px;
+    height: 48px;
+    font-family: var(--lw-font-mono);
+    font-size: 10.5px;
+    color: #fff;
+  }
+
+  .lw-laser__hint {
+    margin: 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+
+  // The phone sheet. Geometry is repeated here rather than added to the shared
+  // list in LawhaPanel.scss, which this package does not own.
+  //
+  // Compound selector on purpose (invariant 12): a single-class rule would
+  // only tie with `.excalidraw .lw-laser` above, and which one won would then
+  // depend on stylesheet import order — which is exactly how the share sheet
+  // once inherited the popover's fixed width.
+  //
+  // `position: fixed` resolves against the viewport only because LawhaPanel
+  // renders the sheet directly into the editor container, outside Radix's
+  // transformed popper wrapper.
+  .lw-laser.lw-laser--sheet {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    box-sizing: border-box;
+    border-radius: var(--lw-r-modal) var(--lw-r-modal) 0 0;
+    padding: 20px 16px calc(20px + var(--sab, 0px));
+    box-shadow: var(--lw-shadow-modal);
+    z-index: var(--zIndex-ui-library);
+
+    // A full-width square wheel would be enormous on a phone; cap it and
+    // centre it instead.
+    .lw-laser__wheel {
+      width: min(100%, 260px);
+      margin-inline: auto;
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Menus and sheets
+  // -----------------------------------------------------------------------
+  .lw-menu {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    padding: 6px;
+    background: var(--lw-surface-98);
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    box-shadow: var(--lw-shadow-popover);
+    z-index: var(--zIndex-ui-library);
+  }
+
+  .lw-menu__item {
+    text-align: start;
+    border: none;
+    background: none;
+    border-radius: var(--lw-r-md);
+    padding: 10px 12px;
+    min-height: var(--lw-h-md);
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lw-text2);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--lw-sunken);
+      color: var(--lw-accent);
+    }
+  }
+
+  .lw-menu__item--danger:hover {
+    background: var(--lw-danger-bg);
+    color: var(--lw-danger);
+  }
+
+  // Phone overflow: a bottom sheet, reachable one-handed.
+  .lw-sheet {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: var(--zIndex-ui-library);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px 16px calc(16px + var(--sab, 0px));
+    // Without this the horizontal padding is added to a 100% width and the
+    // sheet overflows the viewport.
+    box-sizing: border-box;
+    background: var(--lw-surface-98);
+    border-top: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-modal) var(--lw-r-modal) 0 0;
+    box-shadow: var(--lw-shadow-modal);
+
+    // Direct children are wrappers (the share anchor, the account menu root),
+    // so the controls themselves are one level further down. Stretch both.
+    > *,
+    > * > button,
+    > button {
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: center;
+    }
+
+    // Readouts should not look like buttons, but must still fill the row.
+    .lw-pill {
+      width: 100%;
+      box-sizing: border-box;
+      justify-content: center;
+    }
+  }
+
+  // Dims the canvas behind the sheet so it reads as a temporary surface.
+  .lw-sheet-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--zIndex-ui-library) - 1);
+    background: var(--lw-scrim);
+    border: none;
+    padding: 0;
+  }
+
+  // -----------------------------------------------------------------------
+  // Phone: the bar collapses to essentials
+  // -----------------------------------------------------------------------
+  // Padding and gap are no longer set here: they come from the
+  // `.excalidraw.excalidraw--mobile` custom properties at the top of this file,
+  // which the lifted main-menu trigger reads too. Two form-factor sources for
+  // one row would drift, and the frame they disagreed on would put the
+  // hamburger under the back button.
+  .lw-topbar--phone {
+    .lw-topbar__title {
+      // The title yields exactly the width the lifted hamburger now takes at
+      // the start of the row. Measured, not guessed: at 390px the row was
+      // 7px over once the reserved slot appeared, so the bar wrapped and the
+      // change bought a second row instead of freeing one — which is the
+      // opposite of the point.
+      max-width: calc(46vw - var(--lawha-menu-trigger-size));
+      padding: 0 10px;
+    }
+
+    .lw-topbar__title-button {
+      font-size: 13.5px;
+    }
+  }
+}

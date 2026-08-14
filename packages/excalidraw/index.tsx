@@ -77,6 +77,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
     onUnmount,
     onInitialize,
     isCollaborating = false,
+    laserColor,
     onPointerUpdate,
     renderTopLeftUI,
     renderTopRightUI,
@@ -213,6 +214,7 @@ const ExcalidrawBase = (props: ExcalidrawProps) => {
           onUnmount={onUnmount}
           onInitialize={onInitialize}
           isCollaborating={isCollaborating}
+          laserColor={laserColor}
           onPointerUpdate={onPointerUpdate}
           renderTopLeftUI={renderTopLeftUI}
           renderTopRightUI={renderTopRightUI}

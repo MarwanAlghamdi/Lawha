@@ -17,7 +17,12 @@ export class LaserTrails implements Trail {
   constructor(private app: App) {
     this.localTrail = new AnimatedTrail(app, {
       ...this.getTrailOptions(),
-      fill: () => DEFAULT_LASER_COLOR,
+      // LAWHA: read through on every frame rather than captured, so changing
+      // the colour in account settings takes effect without a remount. Remote
+      // trails already coloured themselves per collaborator; this one was
+      // hardcoded, which made your own laser the only one you could not
+      // recognise as yours.
+      fill: () => this.app.props.laserColor ?? DEFAULT_LASER_COLOR,
     });
   }
 
@@ -96,9 +101,32 @@ export class LaserTrails implements Trail {
       if (!trail) {
         trail = new AnimatedTrail(this.app, {
           ...this.getTrailOptions(),
-          fill: () =>
-            collaborator.pointer?.laserColor ||
-            getClientColor(key, collaborator),
+          // LAWHA: read the collaborator back out of live state on every
+          // frame, and resolve the fallback against the current theme.
+          //
+          // This closure outlives the loop that created it — a trail is built
+          // once and kept for as long as that peer is in the room — and
+          // `Collab.updateCollaborator` replaces the collaborator with a *new*
+          // object on every update. Closing over the one from this iteration
+          // therefore froze the colour at first sight, and first sight is
+          // usually a pointer event: `lawha-identities` is announced after the
+          // join, so a peer who moves their mouse before their identity lands
+          // kept the id-hash fallback for their entire session while their
+          // cursor, read from live state, showed the colour they actually
+          // chose. Same peer, two colours, and only the wrong one moved.
+          //
+          // The theme argument was simply missing, and this was the only
+          // `getClientColor` call site in the tree without one. The interactive
+          // canvas is inverted in dark mode, so each palette entry ships a
+          // pre-inverted hex and picking the wrong one is not a shade off — it
+          // is a different colour. ADR 0002 §3 exists for this.
+          fill: () => {
+            const live = this.app.state.collaborators.get(key) ?? collaborator;
+            return (
+              live.pointer?.laserColor ||
+              getClientColor(key, live, this.app.state.theme)
+            );
+          },
         });
         trail.start(this.container);
 

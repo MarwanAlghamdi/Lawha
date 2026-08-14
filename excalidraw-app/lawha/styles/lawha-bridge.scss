@@ -1,0 +1,103 @@
+// Maps Lawha tokens onto Excalidraw's own custom properties.
+//
+// This is what makes the built-in components (toolbar, islands, dialogs,
+// popovers, sidebar) inherit the Lawha look without per-component overrides.
+// Everything is scoped to `.excalidraw` so it cannot leak into the non-editor
+// pages, which style themselves directly from --lw-*.
+//
+// Property names and their defaults are in packages/excalidraw/css/theme.scss.
+//
+// SPECIFICITY: theme.scss re-declares many of these under
+// `.excalidraw.theme--dark` (two classes), which outranks a single `.excalidraw`
+// selector. Declaring the bridge only once therefore worked in light mode and
+// silently reverted to Excalidraw's purple in dark mode. The mapping is emitted
+// at both specificities instead. The values are theme-independent because each
+// --lw-* token already resolves per theme.
+
+@mixin lawha-bridge {
+  font-family: var(--lw-font-sans);
+
+  // Accent.
+  --color-primary: var(--lw-accent);
+  --color-primary-darker: var(--lw-accent-d);
+  --color-primary-darkest: var(--lw-accent-d);
+  --color-primary-hover: var(--lw-accent-d);
+  --color-primary-light: var(--lw-accent-soft-h);
+  --color-primary-light-darker: var(--lw-accent-soft-h);
+  --color-brand-hover: var(--lw-accent-d);
+  --color-brand-active: var(--lw-accent-d);
+  --focus-highlight-color: var(--lw-accent-soft-h);
+
+  // Surfaces.
+  --island-bg-color: var(--lw-surface-96);
+  --island-bg-color-alt: var(--lw-surface);
+  --default-bg-color: var(--lw-canvas);
+  --color-surface-lowest: var(--lw-surface);
+  --color-surface-low: var(--lw-sunken);
+  --color-surface-mid: var(--lw-input);
+  --color-surface-high: var(--lw-sunken);
+
+  // The selected tool. The mockup fills it with the inverted surface rather
+  // than tinting it, so these two carry the whole active-tool treatment.
+  --color-surface-primary-container: var(--lw-invert-bg);
+  --color-on-primary-container: var(--lw-invert-text);
+
+  // Text and icons.
+  --color-on-surface: var(--lw-text);
+  --text-primary-color: var(--lw-text);
+  --icon-fill-color: var(--lw-text2);
+  --keybinding-color: var(--lw-muted3);
+
+  // Borders and separators.
+  --default-border-color: var(--lw-border);
+  --dialog-border-color: var(--lw-border);
+  --sidebar-border-color: var(--lw-border);
+  --color-border-outline: var(--lw-border);
+  --color-border-outline-variant: var(--lw-border2);
+
+  // Inputs.
+  --input-bg-color: var(--lw-input);
+  --input-border-color: var(--lw-border2);
+  --input-hover-bg-color: var(--lw-sunken);
+  --input-label-color: var(--lw-muted);
+
+  // Buttons.
+  --button-hover-bg: var(--lw-sunken);
+  --button-active-bg: var(--lw-sunken);
+  --button-active-border: var(--lw-accent);
+  --button-destructive-bg-color: var(--lw-danger-bg);
+  --button-destructive-color: var(--lw-danger);
+
+  // Elevation. The mockup's shadows are long, soft and low-opacity; the stock
+  // ones are tighter and read as a different product.
+  --shadow-island: var(--lw-shadow-toolbar);
+  --shadow-island-stronger: var(--lw-shadow-popover);
+  --modal-shadow: var(--lw-shadow-modal);
+
+  --popup-bg-color: var(--lw-surface-98);
+  --popup-secondary-bg-color: var(--lw-sunken);
+  --popup-text-color: var(--lw-text);
+}
+
+.excalidraw {
+  @include lawha-bridge;
+}
+
+// Matches the specificity of theme.scss's own dark block.
+.excalidraw.theme--dark {
+  @include lawha-bridge;
+}
+
+// Utility for the mono "meta" role: counts, statuses, field labels, keycaps.
+.lw-mono {
+  font-family: var(--lw-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lw-label {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lw-muted);
+}

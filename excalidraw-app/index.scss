@@ -1,32 +1,24 @@
+// Lawha design system: tokens, fonts, the bridge onto Excalidraw's own custom
+// properties, and the editor skin. `@use` must precede `@import` in Sass.
+@use "./lawha/styles/index.scss";
+
 @import "../packages/excalidraw/css/variables.module.scss";
 
 .excalidraw {
-  --color-primary-contrast-offset: #625ee0; // to offset Chubb illusion
+  // Chubb-illusion offset, in the Lawha accent rather than Excalidraw purple.
+  --color-primary-contrast-offset: var(--lw-accent-d);
 
   &.theme--dark {
-    --color-primary-contrast-offset: #726dff; // to offset Chubb illusion
+    --color-primary-contrast-offset: var(--lw-accent-d);
   }
 
+  // The footer slot carries the Lawha sync pill, which sits beside the zoom
+  // and undo clusters on the left rather than being pushed to the far right.
   .footer-center {
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-top: auto;
     margin-bottom: auto;
-    margin-inline-start: auto;
-  }
-
-  .encrypted-icon {
-    border-radius: var(--space-factor);
-    color: var(--color-primary);
-    margin-top: auto;
-    margin-bottom: auto;
-    margin-inline-start: auto;
-    margin-inline-end: 0.6em;
-    z-index: var(--zIndex-layerUI);
-
-    svg {
-      width: 1.2rem;
-      height: 1.2rem;
-    }
+    margin-inline-end: auto;
   }
 
   .dropdown-menu-container {

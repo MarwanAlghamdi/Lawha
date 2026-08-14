@@ -1,0 +1,223 @@
+// Lawha design tokens.
+//
+// The source mockups kept the light theme entirely inside `var(--x, fallback)`
+// fallbacks, which is authoring-tool residue. Here light is a real declaration.
+//
+// Each palette is emitted twice, against two different theme signals:
+//
+//   :root / body[data-lw-theme]      — pages outside the editor (home, auth)
+//   .excalidraw / .excalidraw.theme--dark — inside the editor, where
+//     `theme--dark` is toggled imperatively by the Excalidraw component and is
+//     the only signal guaranteed to be in step with the canvas.
+//
+// Both are driven from one source: useHandleAppTheme mirrors the resolved
+// editor theme onto document.body.dataset.lwTheme.
+
+@mixin lawha-light {
+  --lw-bg: #f7f4ed;
+  --lw-canvas: #fdfcf8;
+  --lw-surface: #fffefa;
+  --lw-input: #fbf9f3;
+  --lw-sunken: #f1ece1;
+
+  --lw-border: #ddd5c4;
+  --lw-border2: #e2dacb;
+  --lw-border3: #ece5d6;
+  --lw-border4: #e6dece;
+  --lw-border-dash: #cec5b2;
+  --lw-divider: #e8e0d0;
+
+  --lw-dot: #d3cbba;
+  --lw-dot2: #e2dac9;
+
+  --lw-text: #1c1a17;
+  --lw-text2: #4f4a41;
+  --lw-text3: #6b6559;
+  --lw-muted: #8a8375;
+  --lw-muted2: #9c9484;
+  --lw-muted3: #b0a795;
+  --lw-ink: #6a6559;
+
+  --lw-accent: #b4552f;
+  --lw-accent-d: #8f3f20;
+  --lw-accent-soft-h: #f3e0d6;
+
+  --lw-invert-bg: #1c1a17;
+  --lw-invert-bg-h: #332f29;
+  --lw-invert-text: #f6f3ec;
+
+  --lw-danger: #a8412a;
+  --lw-danger-b: #efd9d2;
+  --lw-danger-bg: #fbeee9;
+
+  // Translucent surfaces used by floating islands.
+  --lw-surface-85: rgba(255, 254, 250, 0.85);
+  --lw-surface-90: rgba(255, 254, 250, 0.9);
+  --lw-surface-94: rgba(255, 254, 250, 0.94);
+  --lw-surface-96: rgba(255, 254, 250, 0.96);
+  --lw-surface-98: rgba(255, 254, 250, 0.98);
+
+  --lw-chip-orange: #f8ede7;
+  --lw-chip-orange-b: #ecd6c9;
+  --lw-chip-green: #eaf2ec;
+  --lw-chip-green-b: #d3e3d8;
+  --lw-chip-purple: #f0ebf7;
+  --lw-chip-purple-b: #ded3ec;
+
+  --lw-stroke-blue: #2b6ca3;
+  --lw-stroke-green: #3f7a52;
+  --lw-stroke-purple: #7a5aa8;
+
+  --lw-scrim: rgba(28, 26, 23, 0.42);
+
+  // On the INVERTED surface — the dashboard's floating selection bar, which is
+  // dark in light mode and light in dark mode. They are separate tokens rather
+  // than reused `--lw-border`/`--lw-muted` because every one of those is
+  // defined against the page's surface and is invisible on top of
+  // `--lw-invert-bg`. Expressed as alphas of the *opposite* theme's ink so the
+  // bar keeps its contrast whichever way round it is.
+  --lw-bar-line: rgba(255, 255, 255, 0.18);
+  --lw-bar-fill: rgba(255, 255, 255, 0.1);
+  --lw-bar-fill-b: rgba(255, 255, 255, 0.2);
+  --lw-bar-dim: rgba(248, 245, 238, 0.62);
+  --lw-bar-danger: #f0a08a;
+  --lw-bar-danger-b: rgba(232, 131, 106, 0.5);
+  --lw-bar-danger-bg: rgba(232, 131, 106, 0.14);
+}
+
+@mixin lawha-dark {
+  --lw-bg: #141310;
+  --lw-canvas: #191713;
+  --lw-surface: #1e1c18;
+  --lw-input: #1a1815;
+  --lw-sunken: #26231e;
+
+  --lw-border: #37332b;
+  --lw-border2: #3a352d;
+  --lw-border3: #2e2b24;
+  --lw-border4: #2e2b24;
+  --lw-border-dash: #423c32;
+  --lw-divider: #33302a;
+
+  --lw-dot: #2b2822;
+  --lw-dot2: #2a2721;
+
+  --lw-text: #f0ebe0;
+  --lw-text2: #cdc6b8;
+  --lw-text3: #a9a293;
+  --lw-muted: #8e8779;
+  --lw-muted2: #7c766a;
+  --lw-muted3: #6d675c;
+  --lw-ink: #a29a8a;
+
+  --lw-accent: #e08b5f;
+  --lw-accent-d: #f0a97f;
+  --lw-accent-soft-h: #4a3226;
+
+  --lw-invert-bg: #f0ebe0;
+  --lw-invert-bg-h: #ded7c8;
+  --lw-invert-text: #16150f;
+
+  --lw-danger: #e8836a;
+  --lw-danger-b: #4a2f28;
+  --lw-danger-bg: #3a2620;
+
+  --lw-surface-85: rgba(30, 28, 24, 0.85);
+  --lw-surface-90: rgba(30, 28, 24, 0.9);
+  --lw-surface-94: rgba(30, 28, 24, 0.94);
+  --lw-surface-96: rgba(30, 28, 24, 0.96);
+  --lw-surface-98: rgba(30, 28, 24, 0.98);
+
+  --lw-chip-orange: #3a2a22;
+  --lw-chip-orange-b: #4d382c;
+  --lw-chip-green: #223026;
+  --lw-chip-green-b: #2f4536;
+  --lw-chip-purple: #2b2438;
+  --lw-chip-purple-b: #3d3352;
+
+  --lw-stroke-blue: #4f93c9;
+  --lw-stroke-green: #64a87c;
+  --lw-stroke-purple: #a184ce;
+
+  --lw-scrim: rgba(10, 9, 8, 0.55);
+
+  // The bar is light-on-dark in light mode and dark-on-light here, so these
+  // flip to alphas of the dark ink. Same names, opposite base — which is the
+  // whole reason they are tokens and not literals in LawhaHome.scss.
+  --lw-bar-line: rgba(22, 21, 15, 0.16);
+  --lw-bar-fill: rgba(22, 21, 15, 0.07);
+  --lw-bar-fill-b: rgba(22, 21, 15, 0.18);
+  --lw-bar-dim: rgba(22, 21, 15, 0.6);
+  --lw-bar-danger: #a8412a;
+  --lw-bar-danger-b: rgba(168, 65, 42, 0.42);
+  --lw-bar-danger-bg: rgba(168, 65, 42, 0.1);
+}
+
+// Theme-independent scales.
+@mixin lawha-invariants {
+  // Control heights. Every interactive control lands on one of these, and the
+  // 44px floor is a deliberate touch target, not a coincidence.
+  --lw-h-sm: 34px;
+  --lw-h-compact: 36px;
+  --lw-h-tool: 42px;
+  --lw-h-md: 44px;
+  --lw-h-lg: 46px;
+  --lw-h-xl: 48px;
+
+  --lw-r-xs: 4px;
+  --lw-r-sm: 6px;
+  --lw-r-md: 8px;
+  --lw-r-input: 9px;
+  --lw-r-lg: 10px;
+  --lw-r-tool: 11px;
+  --lw-r-popover: 13px;
+  --lw-r-card: 14px;
+  --lw-r-modal: 16px;
+  --lw-r-pill: 20px;
+  --lw-r-avatar: 22px;
+
+  // The signature is 1.5px, not 1px.
+  --lw-border-width: 1.5px;
+
+  --lw-shadow-card: 0 12px 26px -22px rgba(28, 26, 23, 0.55);
+  --lw-shadow-bar: 0 10px 24px -18px rgba(28, 26, 23, 0.5);
+  --lw-shadow-island: 0 10px 22px -18px rgba(28, 26, 23, 0.5);
+  --lw-shadow-toolbar: 0 12px 26px -20px rgba(28, 26, 23, 0.55);
+  --lw-shadow-popover: 0 24px 46px -30px rgba(28, 26, 23, 0.6);
+  --lw-shadow-modal: 0 30px 60px -30px rgba(28, 26, 23, 0.6);
+
+  --lw-font-sans: "Space Grotesk", "Assistant", Helvetica, sans-serif;
+  --lw-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --lw-font-arabic: "IBM Plex Sans Arabic", sans-serif;
+  --lw-font-hand: "Caveat", cursive;
+
+  // Collaborator presence colours. A five-value enum, indexed by a stable hash
+  // of the user id, so the DOM avatar and the canvas cursor always agree.
+  // Kept in step with COLLABORATOR_PALETTE in packages/common/src/colors.ts.
+  --lw-presence-0: oklch(0.55 0.15 250);
+  --lw-presence-1: oklch(0.55 0.15 145);
+  --lw-presence-2: oklch(0.55 0.15 25);
+  --lw-presence-3: oklch(0.55 0.15 300);
+  --lw-presence-4: oklch(0.6 0.13 80);
+  --lw-presence-live: oklch(0.72 0.17 145);
+}
+
+:root {
+  @include lawha-invariants;
+  @include lawha-light;
+}
+
+body[data-lw-theme="dark"] {
+  @include lawha-dark;
+}
+
+// Re-declared inside the editor, where `theme--dark` is the authoritative
+// signal (App.tsx toggles it from props.theme).
+.excalidraw {
+  @include lawha-invariants;
+  @include lawha-light;
+}
+
+.excalidraw.theme--dark {
+  @include lawha-dark;
+}

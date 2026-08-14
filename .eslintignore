@@ -9,3 +9,35 @@ packages/excalidraw/types
 examples/**/public
 dev-dist
 coverage
+
+# `yarn prettier` uses this file as its ignore list, not .gitignore, so anything
+# gitignored but not listed here makes `yarn test:other` fail on a machine that
+# has simply run the tooling. /test-results and /playwright-report are output of
+# this repo's own `yarn test:visual`; .claude and .infigraph are the local
+# code-intelligence index. None of them is source, and none is committed.
+/test-results
+/playwright-report
+/blob-report
+.claude
+.infigraph
+
+# Gitignored, but prettier reads THIS file rather than .gitignore, so anything
+# ignored by git has to be listed here too or `yarn test:other` fails on a file
+# that is not part of the repository.
+#
+# `.superpowers/` is subagent scratch. The rest are the working brief and the
+# process material behind it: still on disk for whoever works in this checkout,
+# no longer published, and no longer anybody's job to keep formatted.
+.superpowers/
+CLAUDE.md
+docs/superpowers/
+docs/agents/
+.github/copilot-instructions.md
+
+# One deployment's own notes: its URL, its administrator, which of its
+# protections are off. `.gitignore` covers `*.local.md` so those facts never
+# reach a repository other people clone — but prettier reads THIS file, and a
+# note somebody wrote by hand is not source anybody should have to format.
+# Without this line `yarn test:other` fails the moment an operator writes one,
+# which teaches them that the gate is noise.
+*.local.md

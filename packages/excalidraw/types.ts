@@ -86,6 +86,23 @@ export type Collaborator = Readonly<{
   avatarUrl?: string;
   // user id. If supplied, we'll filter out duplicates when rendering user avatars.
   id?: string;
+  /**
+   * LAWHA: index into COLLABORATOR_PALETTE, chosen by the user in their
+   * account. Null or absent falls back to hashing the id, which is what
+   * everyone gets until they pick. See getClientColor.
+   */
+  colorIndex?: number | null;
+  /**
+   * LAWHA: this peer holds a share link and has no account.
+   *
+   * Additive, and additive on purpose — `id` and `avatarUrl` above already
+   * existed upstream and carry the rest of a Lawha identity, so this is the
+   * only new field the server-authoritative `lawha-identities` event needs.
+   * Surfaced in the DOM presence stack so a link visitor is not mistaken for a
+   * signed-in one; the canvas cursor needs no special case, because a guest has
+   * no account and therefore no `avatarUrl` by construction.
+   */
+  isGuest?: boolean;
   socketId?: SocketId;
   isCurrentUser?: boolean;
   isInCall?: boolean;
@@ -786,6 +803,14 @@ export interface ExcalidrawProps {
    */
   onInitialize?: (api: ExcalidrawImperativeAPI) => void;
   isCollaborating?: boolean;
+  /**
+   * LAWHA: colour of *this* user's own laser trail.
+   *
+   * Remote trails already take their colour from the collaborator who drew
+   * them, but the local one was hardcoded red — so the colour you picked was
+   * the one colour you never saw. Defaults to DEFAULT_LASER_COLOR.
+   */
+  laserColor?: string;
   onPointerUpdate?: (payload: {
     pointer: { x: number; y: number; tool: "pointer" | "laser" };
     button: "down" | "up";
@@ -1215,6 +1240,13 @@ export interface ExcalidrawImperativeAPI {
   >["getSceneElementsMapIncludingDeleted"];
   history: {
     clear: InstanceType<typeof App>["resetHistory"];
+    /**
+     * The undo stack, for persisting it. Lawha writes this to IndexedDB so a
+     * board can be undone after the tab has been closed — see ADR 0019.
+     * Additive: `clear` is unchanged and upstream callers see no difference.
+     */
+    getUndoStack: InstanceType<typeof App>["getUndoStack"];
+    restoreUndoStack: InstanceType<typeof App>["restoreUndoStack"];
   };
   getSceneElements: InstanceType<typeof App>["getSceneElements"];
   getAppState: () => InstanceType<typeof App>["state"];

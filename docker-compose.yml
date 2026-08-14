@@ -1,23 +1,564 @@
+# Lawha: the app and the collaboration server behind one origin.
+#
+# nginx serves the built frontend and proxies /api and /socket.io to
+# lawha-server, so the session cookie stays first-party and there is no CORS.
+#
+# Prefer `./run.sh` to driving this file by hand — it does the preflight that
+# catches the failures which are silent from here (a port that belongs to the
+# gateway, a data directory Docker would create as root, a Secure cookie on a
+# plain-http origin).
+#
+# Two things to do before the first start:
+#
+#   1. cp .env.example .env           # the published port, and the data paths
+#   2. cp lawha.env.example lawha.env # every LAWHA_* setting
+#
+# There is no step 3 any more. This stack TERMINATES NO TLS and needs no
+# certificates: a gateway on the network owns port 80 and maps names like
+# http://lawha.local onto the one port published below. That reverses what this
+# file used to say, and the reasoning — including what degrades on a plain-http
+# origin and why it is affordable — is in docs/adr/0018. docs/adr/0005 is still
+# correct about the deployment it describes; that deployment is not this one.
+#
+# `lawha.env` is `required: false` so a stack still comes up without it — but
+# "defaults" then means a generated administrator password you have to fish out
+# of `docker compose logs lawha-server`. Copy it.
+#
+# To reach it from OUTSIDE the network, see the `ngrok` service at the bottom.
+# It is behind a compose profile and does not start unless asked.
+
+# One build, two services. `lawha-backup` runs the SAME image as the server
+# rather than an image of its own, and the anchor is what stops that being a
+# copy that drifts.
+#
+# It matters more than it looks. Two separately-built images would each resolve
+# better-sqlite3's transitives on their own, and can end up carrying different
+# SQLite versions — one of which would then be the one reading this database on
+# the day you need it to. Sharing the build makes them the same binary by
+# construction. The second `build:` costs nothing: identical context, identical
+# Dockerfile, so BuildKit answers it entirely from cache.
+#
+# lawha-server/yarn.lock closes the other half of that gap and IS committed —
+# this comment used to claim it did not exist, which was false and contradicted
+# by the note at the top of lawha-server/Dockerfile. Regenerate it the way that
+# note describes (standalone, not from the workspace root) whenever
+# lawha-server/package.json changes.
+x-lawha-server-image: &lawha-server-image
+  context: .
+  dockerfile: lawha-server/Dockerfile
+
 services:
-  excalidraw:
+  lawha-server:
+    build: *lawha-server-image
+    # ${LAWHA_STACK:-lawha}, not a literal, and the four of these move together.
+    #
+    # A container name is unique per DOCKER DAEMON, not per compose project, so
+    # four literal names meant exactly one Lawha per machine — which is what
+    # the README used to list as a limitation. Compose already namespaces
+    # networks and volumes by project; container_name is the one thing that
+    # opts out of that, and it opts out globally.
+    #
+    # The default is the old literal on purpose. With LAWHA_STACK unset these
+    # are still `lawha-server`, `lawha-app`, `lawha-backup`, `lawha-ngrok`, so
+    # every `docker compose exec` in the docs, every `docker logs lawha-server`
+    # in anyone's shell history, and the running deployment itself are all
+    # unaffected. A second stack sets LAWHA_STACK in ITS ./.env and gets its own
+    # set. Compose reads that file; lawha.env is invisible to interpolation.
+    #
+    # Setting it is not sufficient on its own, and run.sh refuses rather than
+    # letting you find out: LAWHA_DATA_DIR must move with it. Two stacks with
+    # distinct container names and one ~/lawha-data is two servers writing one
+    # SQLite file, which is data loss rather than a name collision anything
+    # would report.
+    container_name: ${LAWHA_STACK:-lawha}-server
+    # unless-stopped, not on-failure: on-failure does not bring the container
+    # back after a host reboot, which is the one restart a self-hosted box
+    # actually experiences.
+    restart: unless-stopped
+    # Everything an operator can reasonably change lives here, in one file, so
+    # self-hosting does not mean reading src/config.ts. `required: false` keeps
+    # a missing lawha.env from being a hard error — compose treats an absent
+    # env_file as fatal by default — so the stack still comes up on the code
+    # defaults for anyone who has not copied it yet.
+    #
+    # NOTE THE PRECEDENCE, because it is the thing that will waste an hour:
+    # compose gives `environment:` priority over `env_file`. Anything listed
+    # below CANNOT be overridden from lawha.env, and the list is short for
+    # exactly that reason — it holds only the values that belong to this
+    # compose file rather than to the operator. Everything else
+    # (LAWHA_REQUIRE_AUTH, LAWHA_ALLOW_OPEN_REGISTRATION,
+    # LAWHA_SESSION_TTL_DAYS, the rate limits, LAWHA_MASTER_PASSWORD,
+    # LAWHA_ORIGIN, LAWHA_TRUST_PROXY_HOPS,
+    # LAWHA_ADMIN_*) is deliberately absent so lawha.env actually wins. Their
+    # defaults in lawha-server/src/config.ts are identical to what used to be
+    # pinned here — `true`, `true` and `30` — so no env file means no change.
+    env_file:
+      - path: ./lawha.env
+        required: false
+    environment:
+      # Not settings: these are where the `lawha-data` volume is mounted, two
+      # lines further down. An env file that moved them would put the database
+      # on the container's ephemeral filesystem, and the first `docker compose
+      # down` would take every board with it.
+      LAWHA_DB_PATH: /data/lawha.db
+      LAWHA_FILES_DIR: /data/files
+      # Where the read-only archive mount lands, for the same reason the two
+      # lines above are here: it names a mount point, not a preference. An
+      # env file that moved it would give /admin an empty backup list on a
+      # stack whose backups are fine.
+      #
+      # An operator changing where backups are KEPT sets LAWHA_BACKUP_DIR in
+      # ./.env — which moves the host side of both mounts at once, and is why
+      # that one is interpolated rather than pinned.
+      LAWHA_BACKUP_ARCHIVE_DIR: /backups
+      # AUTO, and this line is load-bearing enough that getting it wrong
+      # produces the single most confusing failure this project has.
+      #
+      # `Secure` means "HTTPS only". Set it on a plain-http origin and the
+      # browser accepts the cookie, never stores it, and never sends it back:
+      # sign-in returns 200, the page reloads, and the user is signed out — for
+      # ever, with no error anywhere, on every device. Nothing in the logs says
+      # "cookie rejected", because nothing rejected anything.
+      #
+      # It was "false" until ADR 0022, and false was correct for a reason that
+      # has not gone away: this stack answers on TWO origins with different
+      # schemes — plain http on the LAN and https through the ngrok tunnel —
+      # and one boolean cannot be right for both. ADR 0018 chose the safe half
+      # and wrote down that the cookie therefore crosses the tunnel unflagged.
+      #
+      # `auto` answers per REQUEST instead of per deployment, from `req.secure`.
+      # An http request gets EXACTLY what "false" gave it, which is why this is
+      # not a change to the plain-HTTP deployment; an https request gets the
+      # flag that "false" was withholding. It is also what makes the optional
+      # `LAWHA_TLS=on` listener below work without a second setting to remember.
+      #
+      # Being HERE and not in lawha.env is the point, and it is also the trap:
+      # `environment:` outranks `env_file:`, so LAWHA_SECURE_COOKIES in
+      # lawha.env does nothing at all. Silently. Someone chasing "sign-in
+      # works and then every request looks signed out" will edit lawha.env,
+      # see no change, and conclude the cookie code is broken. It is this line.
+      LAWHA_SECURE_COOKIES: "auto"
+      #
+      # The public share origin, derived rather than duplicated. The value
+      # already exists as NGROK_DOMAIN in ./.env — validated by run.sh (must
+      # start with https://) and interpolated into the ngrok service's --url
+      # below — so this line makes lawha-server agree with the tunnel BY
+      # CONSTRUCTION instead of trusting two hand-typed copies to stay in
+      # sync. Two copies drift, and the symptom of drift is a dead link
+      # handed to someone outside the network, which is the exact failure
+      # this whole feature exists to remove.
+      #
+      # Being HERE, in `environment:`, means writing LAWHA_PUBLIC_SHARE_ORIGIN
+      # in lawha.env does nothing — same trap as LAWHA_SECURE_COOKIES above,
+      # and lawha.env.example's "names that do NOT belong in this file"
+      # section says so at the setting itself.
+      #
+      # `${NGROK_DOMAIN:-}` — empty default, never `${NGROK_DOMAIN:?message}`.
+      # `:?` is evaluated when compose RENDERS the file, not when a service
+      # starts, so it would fail `docker compose config` and every test that
+      # shells out to compose — even on a plain `./run.sh` where ngrok is
+      # behind a profile and never starts. See the longer version of this
+      # same argument on the ngrok service itself, below.
+      LAWHA_PUBLIC_SHARE_ORIGIN: ${NGROK_DOMAIN:-}
+      #
+      # NOTE ON LAWHA_TRUST_PROXY_HOPS, which is NOT set here on purpose — it
+      # is on the deliberately-absent list above so lawha.env wins, and this
+      # topology changes what it should be. There are now TWO proxies in front
+      # of lawha-server: the gateway, then lawha-app. The default of 1 counts
+      # only lawha-app, so every visitor is bucketed by the gateway's address
+      # and one busy person rate-limits the whole network. Set it to 2 in
+      # lawha.env. lawha.env.example says so at the setting itself.
+    volumes:
+      # A bind mount to a directory outside this repository, and the reasoning
+      # reversed once already — so it is written down properly this time.
+      #
+      # It was a named volume because a bind mount takes the host directory's
+      # ownership and Docker creates a *missing* bind source as root:root,
+      # which the server (running as `node`) then cannot open. That is true,
+      # and it is not the situation here: the host user and the container's
+      # `node` are both uid 1000, so `mkdir -p ~/lawha-data` is the entire
+      # setup — no sudo, no chown, no init container.
+      #
+      # What the named volume cost was the database. `docker volume rm`,
+      # `docker volume prune`, `docker compose down -v` and `docker system
+      # prune --volumes` all destroy it, and the first of those was written
+      # into this project's own restore instructions. A directory in $HOME
+      # survives every one of them, plus a repo rename and a fresh clone,
+      # because a named volume is prefixed with the compose project name,
+      # which defaults to the directory name.
+      #
+      # Back it up with `yarn --cwd lawha-server backup`, never with `cp` or
+      # `tar` against a running container: this database runs in WAL mode and
+      # spends most of its life as a 4KB header plus a multi-megabyte
+      # `-wal`, so copying `lawha.db` yields an empty database that restores
+      # silently and contains nothing.
+      # `~`, and it does expand — an earlier version of this comment claimed
+      # the opposite and used ${HOME} to work around a problem that does not
+      # exist. Compose expands a tilde in a volume source in short form, long
+      # form and through an interpolated default, on every version this stack
+      # supports.
+      #
+      # `~` is also the safer of the two in the one case that differs. With
+      # HOME unset, compose warns — "cannot expand '~', because the environment
+      # lacks HOME" — whereas ${HOME} silently resolves to `/lawha-data` at the
+      # filesystem root and puts the database somewhere nobody will look.
+      #
+      # Override with LAWHA_DATA_DIR, and give it an absolute path: a relative
+      # one resolves against this file and lands the database back inside the
+      # repository, which is the rename-and-fresh-clone hazard the paragraphs
+      # above exist to prevent. (Compose interpolates from the shell and ./.env
+      # — *not* from the env_file above, which only reaches the container.)
+      - ${LAWHA_DATA_DIR:-~/lawha-data}:/data
+      # The backup archive, READ-ONLY, so /admin can list the scheduled
+      # backups and hand one back.
+      #
+      # `:ro` is the entire security design of that feature and it is not
+      # decoration. This is the container with a port on it — the one an
+      # attacker reaches first. Giving it write access to the archive would
+      # mean a compromise here also reaches every backup, including the ones
+      # that exist to recover FROM a compromise. Ransomware does exactly this:
+      # find the backups from the web server and encrypt those first.
+      #
+      # So writing stays with `lawha-backup`, which listens on nothing and is
+      # the only service with this path mounted read-write. `/admin`'s "back up
+      # now" does NOT write here either — it takes a fresh verified copy under
+      # /data, streams it to the browser and deletes it, precisely so that
+      # button needs no write access to this directory.
+      #
+      # Same default as the lawha-backup service below, and it has to stay the
+      # same: they are two views of one host directory, and a typo here shows
+      # up as an admin page that lists no backups on a stack that is taking
+      # them perfectly well.
+      - ${LAWHA_BACKUP_DIR:-~/lawha-backups}:/backups:ro
+    # Not published: only nginx needs to reach it.
+    expose:
+      - "3002"
+
+  # Backups, on a schedule, from the moment the stack comes up.
+  #
+  # WHY THIS IS A SERVICE AND NOT A CRON JOB ON THE HOST. `scripts/backup.mjs`
+  # was written with a wrapper in mind — non-zero exit on every failure,
+  # `--keep N` retention, a `.rejected` quarantine — and that wrapper was never
+  # written, so the backup policy of this deployment was "somebody remembers
+  # the command", which is another way of spelling "no backup policy". A host
+  # systemd timer would work and would also be a second install step, and a
+  # backup policy with a second install step is one that is not installed. This
+  # comes up with `docker compose up -d`, stops with `docker compose down`, and
+  # is configured in the same lawha.env as everything else.
+  #
+  # THE ONE THING THAT MUST NOT CHANGE HERE: this service takes its copy with
+  # SQLite's online backup API, via scripts/backup.mjs. Never `cp`, never
+  # `tar`, never a volume snapshot of the live database. lawha.db runs in WAL
+  # mode and is usually a 4KB header with every table in lawha.db-wal, so a
+  # file copy produces a database with ZERO TABLES that restores silently and
+  # contains nothing — which is how this deployment lost its accounts once
+  # already. A "simpler" backup container that tars /data would be that same
+  # outage, scheduled. docker/lawha-backup.sh carries the long version.
+  lawha-backup:
+    build: *lawha-server-image
+    container_name: ${LAWHA_STACK:-lawha}-backup
+    restart: unless-stopped
+    # Deliberately NO depends_on. Waiting for lawha-server to be healthy would
+    # mean that a server which will not start is also a server that has stopped
+    # being backed up — coupling the backups to the exact failure they exist
+    # for. Nothing here talks to the server; it reads the same directory. On a
+    # genuinely fresh deployment the database does not exist yet, and the
+    # scheduler reports that as `waiting` and polls, rather than as a failure.
+    #
+    # `entrypoint:` rather than `command:` because setting it also clears the
+    # image's CMD, so `node dist/index.js` cannot be appended and a second
+    # copy of the server cannot come up against the same database by accident.
+    # Invoked through `bash` explicitly so the script's executable bit is not
+    # load-bearing.
+    entrypoint: ["/bin/bash", "/opt/lawha/lawha-backup.sh"]
+    # The whole file, so LAWHA_BACKUP_* can be set in the one place an operator
+    # already edits. It also hands this container LAWHA_MASTER_PASSWORD, which
+    # it has no use for — and that is accepted rather than worked around,
+    # because a container holding every backup of the database already holds
+    # everything that password unlocks. Splitting the env file to avoid it
+    # would buy nothing and add a file to keep in sync.
+    env_file:
+      - path: ./lawha.env
+        required: false
+    environment:
+      # Mount points, not settings — same reasoning as lawha-server above, and
+      # the same trap: `environment:` outranks `env_file:`, so these two cannot
+      # be changed from lawha.env. That is on purpose. Note that lawha.env.example
+      # ships LAWHA_DB_PATH=./lawha-data/lawha.db uncommented, which is right
+      # for a checkout and wrong here; without this pin the container would
+      # inherit it and back up a path that does not exist.
+      LAWHA_DB_PATH: /data/lawha.db
+      LAWHA_FILES_DIR: /data/files
+      # Everything an operator actually tunes — LAWHA_BACKUP_INTERVAL_HOURS,
+      # LAWHA_BACKUP_KEEP, LAWHA_BACKUP_FILES — is deliberately ABSENT from
+      # this block so that lawha.env wins. Their defaults (24, 14, true) live
+      # in docker/lawha-backup.sh. Adding one here would make editing
+      # lawha.env do nothing, silently, which is the failure LAWHA_SECURE_COOKIES
+      # already has a box about in two files.
+    volumes:
+      # READ-WRITE, and it has to be. `backup.mjs` opens the source database
+      # read-write on purpose: a read-only connection cannot create the `-shm`
+      # a WAL database needs, so `readonly: true` fails outright against a
+      # cleanly-shut-down database. The online backup API still writes nothing
+      # to the source. Same bind mount as lawha-server, same host directory.
+      - ${LAWHA_DATA_DIR:-~/lawha-data}:/data
+      # The archive, on the host, OUTSIDE ~/lawha-data — a backup that lives in
+      # the directory it protects is not a backup. Same default the README's
+      # manual command uses, so manual and automatic backups share one archive
+      # and one retention policy.
+      #
+      # CREATE IT YOURSELF (`mkdir -p ~/lawha-backups`) for the same reason as
+      # ~/lawha-data: Docker creates a MISSING bind source as root:root, and
+      # this container runs as the unprivileged `node`. It does not fail
+      # quietly if you forget — the first thing the container does is probe
+      # this directory for writability and print the two commands that fix it.
+      #
+      # Override with LAWHA_BACKUP_DIR, absolute path, in ./.env or the shell.
+      # Compose interpolates from there and NOT from lawha.env, exactly like
+      # LAWHA_DATA_DIR — an env_file only ever reaches the container.
+      - ${LAWHA_BACKUP_DIR:-~/lawha-backups}:/backups
+      # The scripts are not in the runtime image: lawha-server/Dockerfile
+      # copies dist/, node_modules/ and package.json and nothing else, which is
+      # why `docker compose exec lawha-server node scripts/backup.mjs` has
+      # never worked. Mounted read-only rather than baked in with a second
+      # Dockerfile, because the alternative is a second image whose better-
+      # sqlite3 can differ from the server's (there is no lockfile), and
+      # because nginx.conf already establishes that this stack configures a
+      # stock image by mounting into it.
+      - ./lawha-server/scripts:/opt/lawha/scripts:ro
+      - ./docker/lawha-backup.sh:/opt/lawha/lawha-backup.sh:ro
+      # The CONFIGURATION, read-only, so the archive can actually rebuild this
+      # deployment rather than only its data.
+      #
+      # Without these the backup was complete and still insufficient: restoring
+      # gave you everyone's boards behind a certificate no device trusts, with
+      # an administrator password nobody knows. `lawha.env` holds
+      # LAWHA_MASTER_PASSWORD, `certs/` holds the CA every phone on the network
+      # has been told to trust, `./.env` holds the origin.
+      #
+      # Read-only, and it matters: this container's job is to copy things out,
+      # never to change them.
+      #
+      # NOTE the docker footgun these three inherit — a MISSING bind source is
+      # created as an empty DIRECTORY rather than failing. `lawha.env` and
+      # `.env` are both gitignored and both genuinely absent on a fresh clone,
+      # so this will happen. lawha-backup.sh detects a directory where a file
+      # belongs and says which host file is missing, instead of copying nothing
+      # and reporting success.
+      - ./lawha.env:/config/lawha.env:ro
+      - ./.env:/config/.env:ro
+      - ./certs:/config/certs:ro
+      # An optional SECOND, off-host copy — the one that survives losing this
+      # disk. ~/lawha-backups sits on the same disk as ~/lawha-data, so the
+      # failure that takes the database takes the archive with it.
+      #
+      # Commented out because it names a path that only exists on a machine
+      # that has one. Mount a second disk, a NAS over NFS/SMB, or an sshfs
+      # target ON THE HOST, point this at it, and set LAWHA_BACKUP_MIRROR_DIR
+      # in lawha.env to /offsite.
+      #
+      # A mounted path rather than an rsync/ssh target on purpose: the runtime
+      # image has neither binary, and adding them would also mean putting a
+      # private key inside the container that holds your data. The credentials
+      # stay on the host, where the host already keeps credentials.
+      # - /mnt/lawha-offsite:/offsite
+    # Silence is the bug: a scheduler that stops has no symptom until somebody
+    # needs a restore. The script writes its verdict to a status file every
+    # cycle and re-reads it here, so a stalled, failing or overdue backup shows
+    # as an unhealthy container in `docker compose ps` — a signal that reaches
+    # someone who is not reading the logs. `--health` lives in the same file as
+    # the loop so the two cannot drift apart.
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/opt/lawha/lawha-backup.sh", "--health"]
+      interval: 5m
+      timeout: 15s
+      # The first cycle writes the status file within a second or two, whether
+      # it backs up, skips or waits — so this only has to cover container start.
+      start_period: 60s
+      retries: 2
+
+  lawha-app:
     build:
       context: .
       args:
-        - NODE_ENV=development
-    container_name: excalidraw
+        - NODE_ENV=production
+    container_name: ${LAWHA_STACK:-lawha}-app
+    restart: unless-stopped
+    # Wait for the HEALTHCHECK in lawha-server/Dockerfile, not merely for the
+    # container to exist. nginx resolves its upstreams at startup and refuses
+    # to start if lawha-server has no address yet.
+    depends_on:
+      lawha-server:
+        condition: service_healthy
     ports:
-      - "3000:80"
-    restart: on-failure
-    stdin_open: true
-    healthcheck:
-      disable: true
+      # ONE published port, in the 9001–9099 band, and NEVER 80.
+      #
+      # Port 80 on this machine belongs to the gateway that maps names like
+      # http://lawha.local onto published ports. Binding it here does not fail
+      # loudly — it takes every other project's name off the network at the
+      # same time, which presents as "the network is broken" rather than as
+      # "Lawha did something". The container listens on 8080 for the same
+      # reason: so no one-character edit to this line can reach 80 by accident.
+      #
+      # NOT 32768 or above, either. Linux draws its ephemeral outbound ports
+      # from that range, so a service parked there binds fine most days and
+      # occasionally loses the race to a random outbound connection — which is
+      # the worst shape of bug, because it is intermittent and looks like the
+      # app crashing.
+      #
+      # Change it in ./.env, not here. Compose reads that file (it does NOT
+      # read lawha.env), and the gateway needs to be told the same number.
+      - "${LAWHA_PUBLISHED_PORT:-9002}:8080"
+      # The TLS port, published unconditionally and listening only when asked.
+      #
+      # It is NOT 443, for the same reason the line above is not 80: 443 belongs
+      # to whatever fronts this machine, and taking it is the failure that
+      # presents as "the network is broken". 9443 sits beside the 9001–9099
+      # band so the two ports of one stack read as a pair.
+      #
+      # Publishing it while LAWHA_TLS is unset costs a docker-proxy socket and
+      # nothing else — connections are refused because nothing inside is
+      # listening. The alternative, a conditional port, does not exist in
+      # compose without a second file or a profile, and both of those are a
+      # place for the two halves of "TLS is on" to disagree.
+      - "${LAWHA_TLS_PORT:-9443}:8443"
     environment:
-      - NODE_ENV=development
+      # Restricts envsubst to LAWHA_* names. Without it, envsubst would also
+      # eat nginx's own $host, $request_uri, $remote_addr and so on, and the
+      # config would come out subtly and silently wrong.
+      #
+      # docker/nginx.conf substitutes nothing today — the canonical-origin and
+      # https-suffix variables went with TLS in ADR 0018, and the TLS listener
+      # that came back in ADR 0022 is written by a script rather than
+      # substituted — but the template mechanism and this filter stay, because
+      # the failure mode of adding a variable later and rediscovering this line
+      # is a config full of empty strings where nginx's own variables used to be.
+      NGINX_ENVSUBST_FILTER: "^LAWHA_"
+      # Off unless asked for. `on` makes docker/nginx-tls.sh write the
+      # `listen 8443 ssl` include; anything else (including unset) leaves the
+      # include directory empty and this stack exactly as ADR 0018 describes it.
+      #
+      # Interpolated from ./.env rather than pinned, because unlike
+      # LAWHA_SECURE_COOKIES this is a deployment's own choice rather than a
+      # value that must not be edited. It is not in lawha.env because compose
+      # never reads that file for interpolation and lawha-server has no use for
+      # it — this is nginx's setting, not the server's.
+      LAWHA_TLS: "${LAWHA_TLS:-off}"
+    # A health endpoint that answers 200, per the deployment checklist. The
+    # image declares its own HEALTHCHECK against the same URL; this is here so
+    # `docker compose ps` reports it without depending on the image being
+    # rebuilt.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     volumes:
-      - ./:/opt/node_app/app:delegated
-      - ./package.json:/opt/node_app/package.json
-      - ./yarn.lock:/opt/node_app/yarn.lock
-      - notused:/opt/node_app/app/node_modules
+      # Mounted as a TEMPLATE, not straight into conf.d. The nginx image's
+      # entrypoint (/docker-entrypoint.d/20-envsubst-on-templates.sh) expands
+      # /etc/nginx/templates/*.template into /etc/nginx/conf.d/ at start-up,
+      # which is how a ${LAWHA_*} name would reach the config without any
+      # address being committed to the repository. This sentence used to name
+      # ${LAWHA_PUBLIC_ORIGIN} as the example; that variable went with the TLS
+      # configuration in ADR 0018 and exists nowhere any more.
+      #
+      # The source keeps its .conf name on purpose: the destination is the
+      # only part envsubst looks at.
+      - ./docker/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+      # Turns LAWHA_TLS into a listener, or refuses to start. 40- places it
+      # after the image's own 20-envsubst-on-templates.sh, which is what expands
+      # the template above — this writes a file that template `include`s.
+      - ./docker/nginx-tls.sh:/docker-entrypoint.d/40-lawha-tls.sh:ro
+      # The certificates, back on lawha-app since ADR 0022 — READ-ONLY, and
+      # through a bind mount rather than a COPY.
+      #
+      # A private key must never enter an image: an image gets pushed, cached,
+      # shared and layered, and a key in a layer is a key you cannot delete.
+      # `.dockerignore` excludes `certs` for exactly that reason and that
+      # exclusion stays; this line is how nginx gets the key at RUN time instead.
+      #
+      # The mount is unconditional and the directory may be empty. That is fine
+      # and deliberate: docker/nginx-tls.sh checks for the files it needs and
+      # names them if they are missing, which is a better failure than a mount
+      # that does not exist. `run.sh` creates ./certs before the first `up` so
+      # docker does not create it root-owned in the operator's checkout.
+      #
+      # ADR 0018 removed this mount and was right to: nothing in the stack
+      # terminated TLS, so it was one more certificate to be wrong. ADR 0022
+      # puts it back behind a flag rather than reversing that decision —
+      # LAWHA_TLS unset is still ADR 0018's deployment, exactly.
+      - ./certs:/etc/nginx/certs:ro
+  # Reaching Lawha from OUTSIDE the network, on an explicit opt-in.
+  #
+  # `profiles:` is the whole design of this service. It does NOT start with
+  # `docker compose up -d` — you have to ask for it:
+  #
+  #     docker compose --profile public up -d      (or ./run.sh public)
+  #
+  # That is deliberate. Every other service here is reachable only by someone
+  # already on the LAN; this one puts the deployment on the public internet,
+  # and a thing that dangerous should never come up because somebody ran the
+  # ordinary start command. Opting out has to be the default, and stopping it
+  # is `docker compose stop ngrok`.
+  #
+  # WHY IT POINTS AT `lawha-app:8080` AND NOT AT THE HOST PORT. Both routes
+  # into this stack must arrive with the same number of proxies in front of
+  # them, because `LAWHA_TRUST_PROXY_HOPS` is one number and has to be right
+  # for both:
+  #
+  #   LAN:      browser -> portless -> lawha-app -> lawha-server   (2 hops)
+  #   internet: browser -> ngrok    -> lawha-app -> lawha-server   (2 hops)
+  #
+  # Pointing this at the published host port instead would put portless in
+  # front of it on one path and not the other, and the rate limiter would key
+  # every internet visitor to one bucket. Inside the compose network, ngrok
+  # talks to nginx directly and the two paths stay symmetrical.
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: ${LAWHA_STACK:-lawha}-ngrok
+    restart: unless-stopped
+    profiles: ["public"]
+    depends_on:
+      lawha-app:
+        condition: service_healthy
+    # `--url` pins the endpoint to the dev domain permanently assigned to your
+    # ngrok account, so the link you hand out survives every restart. Without
+    # it ngrok mints a fresh random hostname each time and the address you gave
+    # people last week is gone.
+    #
+    # `--host-header` is deliberately NOT set. Leaving it alone forwards the
+    # ngrok hostname as `Host`, which is exactly what the CSRF check in
+    # src/http/middleware/csrf.ts needs: it compares the Origin's host against
+    # the Host header, and the browser's Origin IS that hostname. Setting
+    # `--host-header=rewrite` would replace it with `lawha-app:8080`, the two
+    # would stop matching, and every write would be refused with "Request
+    # origin not allowed" while every read kept working — boards open, nothing
+    # saves. That reads as a broken product rather than as a proxy setting.
+    #
+    # Both variables default to EMPTY rather than to `${VAR:?message}`, and the
+    # difference matters more than it looks. `:?` is evaluated when compose
+    # renders the file, not when the service starts — so it fires for
+    # `docker compose config`, `docker compose up`, and every test that shells
+    # out to compose, even though this service is behind a profile and is not
+    # being started. An opt-in service that breaks the opt-out path is not
+    # opt-in. `run.sh public` does the validation instead, where it can say
+    # something useful.
+    #
+    # `--log stdout` because without it this image emits NOTHING — no startup
+    # line, no tunnel URL, no error — so `docker compose logs ngrok` comes back
+    # empty whether the tunnel is healthy or the authtoken was rejected. That
+    # cost a false alarm here already: run.sh grepped those logs for a success
+    # line, found nothing, and warned about a tunnel that was serving traffic.
+    # Silence meaning both outcomes is the worst diagnostic there is.
+    command: >
+      http lawha-app:8080 --url ${NGROK_DOMAIN:-} --log stdout --log-format logfmt --log-level info
 
-volumes:
-  notused:
+
+    environment:
+      # From ./.env, which is gitignored. This token is your whole ngrok
+      # account; treat it the way you treat LAWHA_MASTER_PASSWORD.
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+# No top-level `volumes:` block any more. The database lives in a directory on
+# the host (see lawha-server's mount above) precisely so that no docker volume
+# command can reach it.

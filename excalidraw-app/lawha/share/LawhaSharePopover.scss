@@ -1,0 +1,811 @@
+// The share panel.
+//
+// Everything here is nested under `.excalidraw` on purpose. The phone sheet's
+// geometry lives in LawhaPanel.scss as the compound selector
+// `.lw-share.lw-share--sheet`, which outranks `.excalidraw .lw-share` only
+// because it carries one class more (invariant 12). A single-class rule here
+// would tie with it and let stylesheet import order decide the sheet's width —
+// which is exactly how the sheet silently inherited the popover's fixed width
+// once already. Keep every rule below at `.excalidraw .lw-share…`.
+
+.excalidraw {
+  .lw-share {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    // Wider than the 330px of the original mockup. That width was set when the
+    // panel was a link and a copy button; it now answers five questions, and a
+    // roster row with a name, a permission and a Remove button simply does not
+    // fit legibly in it.
+    width: 380px;
+    max-width: calc(100vw - 28px);
+    // Five sections stack tall. On a 13" laptop the roster alone can push the
+    // session controls past the bottom of the window, and a popover that
+    // overflows the viewport has no way to reach its own actions. Deliberately
+    // not overridden for the sheet: a bottom sheet taller than the phone is the
+    // same bug wearing a different hat.
+    //
+    // 640px was too mean, and a screenshot showed why: the panel opens ~76px
+    // down, so it ended at 716 on a 900px window with 184px going spare below
+    // it — and what fell past the fold was the link. The sections were reordered
+    // so the link comes first regardless, but the cap should not have been
+    // spending height it had.
+    max-height: min(86vh, 780px);
+    overflow-y: auto;
+    // The canvas scrolls (and zooms) under this panel. Without containment a
+    // flick that runs past the end of the list keeps going into the scene.
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+    padding: 16px 18px 18px;
+    background: var(--lw-surface-98);
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    box-shadow: var(--lw-shadow-popover);
+    // Clears the top bar, still beaten by dialogs.
+    z-index: var(--zIndex-ui-library);
+  }
+
+  .lw-share__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .lw-share__heading {
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lw-text2);
+  }
+
+  .lw-share__close {
+    border: none;
+    background: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--lw-muted);
+    cursor: pointer;
+    // Below the 44px floor visually, so the hit area is padded out instead.
+    padding: 8px;
+    margin: -8px;
+
+    &:hover {
+      color: var(--lw-accent);
+    }
+  }
+
+  // Sections rather than one flat stack. The panel answers five separate
+  // questions — who is named, who to add, what the link grants, what the link
+  // is, and what to do with the session — and running them together as one
+  // column is what made it unreadable. The rule is a real divider, not just
+  // extra gap: a gap says "next paragraph", a line says "different question".
+  .lw-share__section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--lw-divider);
+  }
+
+  .lw-share__section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .lw-share__label {
+    margin: 0;
+    font-family: var(--lw-font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lw-muted);
+  }
+
+  .lw-share__sublabel {
+    font-family: var(--lw-font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lw-muted2);
+  }
+
+  .lw-share__count {
+    font-family: var(--lw-font-mono);
+    font-size: 10.5px;
+    color: var(--lw-muted2);
+  }
+
+  .lw-share__blurb {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--lw-text2);
+    text-wrap: pretty;
+  }
+
+  .lw-share__blurb--muted {
+    color: var(--lw-muted);
+    font-size: 12.5px;
+  }
+
+  // ── who has access ──────────────────────────────────────────────────────
+
+  .lw-share__members {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  // A card, not a table row. The controls sit on their own line beneath the
+  // name so both clear the 44px target without squeezing the name into an
+  // ellipsis — which is what a single tight row did at any realistic width.
+  .lw-share__member {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 10px 11px;
+    background: var(--lw-sunken);
+    border: var(--lw-border-width) solid var(--lw-border3);
+    border-radius: var(--lw-r-md);
+  }
+
+  .lw-share__member-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  // Neutral by design. `.lw-avatar` expects a collaborator colour; the roster
+  // has none, only a username, so any tint chosen here would be a colour this
+  // person is not — and would disagree with their canvas cursor the moment
+  // they joined. ADR 0001 exists because those two surfaces drifted apart.
+  .lw-share__member-avatar {
+    background: var(--lw-surface-94);
+    border-color: var(--lw-border2);
+    color: var(--lw-text3);
+    font-family: var(--lw-font-sans);
+  }
+
+  .lw-share__member-id {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .lw-share__member-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--lw-text);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Only the presence list puts the name directly in the row; in a roster card
+  // the flexing child is the name-and-role stack above it.
+  .lw-share__member-head > .lw-share__member-name {
+    flex: 1;
+    font-weight: 500;
+    color: var(--lw-text2);
+  }
+
+  .lw-share__member-role {
+    font-family: var(--lw-font-mono);
+    font-size: 11px;
+    color: var(--lw-muted);
+  }
+
+  // ── here now ────────────────────────────────────────────────────────────
+
+  // The presence dot, at the head of a member row.
+  //
+  // A fixed-width slot whether or not anyone is here, so names line up down the
+  // list — a column that only exists for some rows is a column that shifts.
+  // Never colour alone: the row also carries "here now" in its accessible name.
+  .lw-share__here {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: transparent;
+  }
+
+  // The accent, not a new green. This palette has one signal colour and a
+  // presence dot is not important enough to be the reason it grows a second —
+  // a green invented here would clear AA in one theme and have to be tuned for
+  // the other, for a 7px circle.
+  .lw-share__here--on {
+    background: var(--lw-accent);
+    box-shadow: 0 0 0 3px var(--lw-accent-soft-h);
+  }
+
+  .lw-share__more {
+    flex: 0 0 auto;
+    width: var(--lw-h-md);
+    min-width: var(--lw-h-md);
+    height: var(--lw-h-md);
+    min-height: var(--lw-h-md);
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  // Expands in place rather than opening a menu — a popover inside a popover
+  // inside a phone bottom sheet is exactly what invariant 11 is about.
+  .lw-share__member-more {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 2px;
+  }
+
+  // `.lw-select` sits at one class of specificity, so these two-class rules
+  // win and can pull the control down onto the 44px grid the rest of the
+  // panel uses.
+  .lw-share__role {
+    flex: 0 1 auto;
+    // Wide enough for "Can edit" and no wider: it shares the row with a name
+    // now rather than sitting on a line of its own, and a select that flexes
+    // to fill would push every username into an ellipsis.
+    width: 106px;
+    min-width: 0;
+    height: var(--lw-h-md);
+    min-height: var(--lw-h-md);
+    padding: 0 11px;
+    font-size: 13px;
+    background: var(--lw-input);
+  }
+
+  .lw-share__remove {
+    flex: 0 0 auto;
+    font-size: 12.5px;
+
+    &:hover:not(:disabled) {
+      background: var(--lw-danger-bg);
+      border-color: var(--lw-danger);
+      color: var(--lw-danger);
+    }
+  }
+
+  // ── add people ──────────────────────────────────────────────────────────
+
+  // Stacked, not side by side. Sharing one row left the search field too
+  // narrow to read a name back in and the permission select too narrow to
+  // read at all.
+  .lw-share__add {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+
+  // Side by side once there is room, because this is the first thing in the
+  // panel now and a two-line form at the top pushes the roster below the fold.
+  // The field keeps the flex; the role select is content-width.
+  @media (min-width: 380px) {
+    .lw-share__add {
+      flex-direction: row;
+      align-items: flex-end;
+    }
+
+    .lw-share__add-find {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .lw-share__add-role {
+      flex: none;
+    }
+  }
+
+  .lw-share__search {
+    height: var(--lw-h-md);
+    min-height: var(--lw-h-md);
+    padding: 0 12px;
+    font-size: 13.5px;
+  }
+
+  // Capped and scrollable: a server with fifty accounts must not push the
+  // sections below off the bottom of the panel.
+  .lw-share__candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    max-height: 176px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+  }
+
+  .lw-share__candidate {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: var(--lw-h-md);
+    padding: 5px 9px;
+    text-align: start;
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    background: none;
+    border: none;
+    border-radius: var(--lw-r-md);
+    color: var(--lw-text2);
+    cursor: pointer;
+
+    // "Add" as a pseudo-element rather than a child span, so it stays out of
+    // the accessibility tree: the button's name should be the person it adds,
+    // not "ZA zaid Add".
+    &::after {
+      content: "Add";
+      margin-inline-start: auto;
+      font-family: var(--lw-font-mono);
+      font-size: 10.5px;
+      color: var(--lw-muted3);
+    }
+
+    &:hover:not(:disabled),
+    &:focus-visible {
+      background: var(--lw-sunken);
+      color: var(--lw-accent);
+
+      &::after {
+        color: var(--lw-accent);
+      }
+    }
+
+    &:disabled {
+      color: var(--lw-muted3);
+      cursor: default;
+    }
+  }
+
+  // ── link access ─────────────────────────────────────────────────────────
+
+  .lw-share__options {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  // A row with its consequence spelled out, not a chip. Three chips reading
+  // "Off / Can view / Can edit" put the whole decision in two words and left
+  // the difference between viewing and editing for the reader to guess.
+  .lw-share__option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+    // The row is taller than this once the sentence wraps; the floor is here
+    // for the wide-panel case where it does not.
+    min-height: var(--lw-h-md);
+    padding: 10px 12px;
+    text-align: start;
+    background: var(--lw-sunken);
+    border: var(--lw-border-width) solid var(--lw-border3);
+    border-radius: var(--lw-r-md);
+    font-family: var(--lw-font-sans);
+    cursor: pointer;
+    transition: border-color 120ms ease, background 120ms ease;
+
+    &:hover:not(:disabled) {
+      border-color: var(--lw-border);
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+  }
+
+  // The state of the setting for someone who cannot change it: same row, same
+  // sentence, no control.
+  .lw-share__option--static {
+    cursor: default;
+  }
+
+  .lw-share__option-mark {
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    border: var(--lw-border-width) solid var(--lw-border-dash);
+    background: var(--lw-surface);
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .lw-share__option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .lw-share__option-label {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--lw-text);
+  }
+
+  .lw-share__option-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+
+  .lw-share__option--on {
+    background: var(--lw-accent-soft-h);
+    border-color: var(--lw-accent);
+
+    .lw-share__option-mark {
+      border-color: var(--lw-accent);
+      box-shadow: inset 0 0 0 3.5px var(--lw-accent);
+    }
+
+    .lw-share__option-label {
+      color: var(--lw-accent-d);
+    }
+  }
+
+  // ── the link ────────────────────────────────────────────────────────────
+
+  .lw-share__url-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .lw-share__url {
+    flex: 1;
+    min-width: 0;
+    min-height: var(--lw-h-md);
+    padding: 11px 12px;
+    font-size: 11.5px;
+    background: var(--lw-sunken);
+    border: 1px solid var(--lw-border2);
+    border-radius: var(--lw-r-md);
+    color: var(--lw-text2);
+    text-overflow: ellipsis;
+  }
+
+  .lw-share__copy {
+    padding: 0 14px;
+    font-size: 12.5px;
+    border-radius: var(--lw-r-md);
+  }
+
+  // ── one link per route ──────────────────────────────────────────────────
+  //
+  // Rendered only where an operator has configured what this deployment
+  // answers to; with nothing configured these rules match nothing and the
+  // single `.lw-share__url-row` above is the whole of the link surface, exactly
+  // as before. Nested here at `.excalidraw .lw-share…` for the reason at the
+  // top of this file — the sheet's geometry is a compound selector in
+  // LawhaPanel.scss and has to keep outranking everything written here
+  // (invariant 12).
+
+  .lw-share__routes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  // A block per route, not a row. The label and its consequence stack above
+  // the field: at 380px a label, a URL and a Copy button on one line leaves
+  // the URL as an ellipsis, and an address you cannot read is one you cannot
+  // check before handing it to somebody.
+  .lw-share__route {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  // The label and its liveness on one line, with the status pushed to the far
+  // end. Wraps rather than truncates: "not answering" is the one string in this
+  // panel that must never be clipped into ambiguity.
+  .lw-share__route-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .lw-share__route-label {
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lw-text);
+  }
+
+  // Dot AND word, never colour alone — `prefers-reduced-motion` and
+  // colour-blindness both take the visual cue away, and this is the difference
+  // between a link that opens and one that does not.
+  .lw-share__route-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    font-family: var(--lw-font-mono);
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+
+    .lw-dot {
+      // Follows the state colour below rather than repeating it three times.
+      background: currentColor;
+    }
+  }
+
+  // Muted, not a hopeful colour. `checking` is a state in its own right and
+  // must never be mistakable at a glance for `answering` — somebody reads this
+  // in the seconds before handing the link to another person.
+  .lw-share__route-status--checking,
+  .lw-share__route-status--here {
+    color: var(--lw-muted);
+  }
+
+  // The accent, not a new green — the same decision `.lw-share__here--on`
+  // records a few hundred lines up. This palette has one signal colour, and a
+  // status dot is not the reason to grow a second that would then need tuning
+  // for both themes.
+  .lw-share__route-status--up {
+    color: var(--lw-accent);
+  }
+
+  .lw-share__route-status--down {
+    color: var(--lw-danger);
+  }
+
+  // Above the field and before the Copy button in reading order, which is the
+  // whole point of it. The button stays enabled: a stopped tunnel is usually
+  // stopped by the person reading this, and they may be about to start it.
+  .lw-share__route-dead {
+    margin: 0;
+    padding: 6px 8px;
+    border-radius: var(--lw-radius-sm);
+    background: var(--lw-danger-bg);
+    color: var(--lw-danger);
+    font-size: 12px;
+    line-height: 1.5;
+    text-wrap: pretty;
+
+    code {
+      font-family: var(--lw-font-mono);
+      font-size: 11px;
+    }
+  }
+
+  .lw-share__route-hint {
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+
+  // Collapsed by default. The raw IP has to be reachable — `.local` is mDNS
+  // and fails on some phones, on Windows without Bonjour and over a tailnet —
+  // but an address that goes stale with the DHCP lease is not the one to
+  // offer first.
+  .lw-share__routes-more {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lw-share__routes-more > summary {
+    font-size: 12px;
+    color: var(--lw-muted);
+    cursor: pointer;
+  }
+
+  // ── session ─────────────────────────────────────────────────────────────
+
+  .lw-share__present {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lw-share__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lw-share__confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 11px;
+    background: var(--lw-sunken);
+    border: 1px solid var(--lw-border2);
+    border-radius: var(--lw-r-md);
+  }
+
+  .lw-share__confirm-actions {
+    display: flex;
+    gap: 8px;
+
+    > .lw-btn {
+      flex: 1;
+      justify-content: center;
+    }
+  }
+
+  // ── the rest ────────────────────────────────────────────────────────────
+
+  // A bordered block, not a line of red text. The panel scrolls now, and a
+  // failure that reads as a stray sentence gets scrolled past.
+  .lw-share__error {
+    margin: 0;
+    padding: 9px 11px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--lw-danger);
+    background: var(--lw-danger-bg);
+    border: var(--lw-border-width) solid var(--lw-danger-b);
+    border-radius: var(--lw-r-md);
+  }
+
+  .lw-share__start,
+  .lw-share__stop,
+  .lw-share__leave {
+    justify-content: center;
+  }
+
+  .lw-share__note {
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.6;
+    color: var(--lw-muted2);
+  }
+
+  .lw-share__footer {
+    padding-top: 12px;
+    border-top: 1px solid var(--lw-divider);
+  }
+
+  // ── invite codes ────────────────────────────────────────────────────────
+  //
+  // Nested here rather than in a file of its own for the reason at the top of
+  // this one: every rule for this panel has to sit at `.excalidraw .lw-share…`
+  // or the phone sheet's geometry stops outranking it.
+
+  .lw-codes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .lw-codes__head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  // Three controls and a button. They wrap rather than shrink: "Anyone who has
+  // it" is the longest label in the panel and squeezing it produces an ellipsis
+  // on the word that carries the meaning.
+  .lw-codes__mint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  // `min-width: 0` alone is not enough: a `<select>` has an intrinsic minimum
+  // from its longest option, and three of them sharing 380px each ended up
+  // narrower than their own text. A larger basis makes the row wrap to two
+  // lines rather than squeezing all three onto one.
+  .lw-codes__mint .lw-field {
+    flex: 1 1 112px;
+    min-width: 0;
+  }
+
+  .lw-codes__mint .lw-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lw-codes__mint-btn {
+    flex: 0 0 auto;
+  }
+
+  .lw-codes__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lw-codes__item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 9px 11px;
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-control);
+    background: var(--lw-surface2, transparent);
+  }
+
+  // The code is the content of the row, not a caption on it. Letter-spaced and
+  // set large because its entire purpose is being read out loud, and the words
+  // are separated by a middot for the same reason — three run-together words
+  // are where a mis-hearing comes from.
+  .lw-codes__code {
+    font-family: var(--lw-font-mono, ui-monospace, monospace);
+    font-size: 15px;
+    letter-spacing: 0.04em;
+    color: var(--lw-text);
+    user-select: all;
+    word-break: break-word;
+  }
+
+  .lw-codes__meta,
+  .lw-codes__who {
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--lw-muted);
+  }
+
+  .lw-codes__actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+  }
+
+  // Compound selector, matching the note on `.lw-auth-card__header
+  // .lw-theme-toggle`: `.lw-btn` fixes a height through the `lw-control`
+  // mixin, and a single class here would only tie with it.
+  .lw-codes__actions .lw-btn {
+    height: var(--lw-h-compact);
+    min-height: var(--lw-h-compact);
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .lw-codes__revoke {
+    color: var(--lw-danger, #b3261e);
+  }
+
+  .lw-codes__item--dead .lw-codes__code {
+    color: var(--lw-muted2);
+    text-decoration: line-through;
+  }
+
+  .lw-codes__spent {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lw-codes__spent > summary {
+    font-size: 12px;
+    color: var(--lw-muted);
+    cursor: pointer;
+  }
+
+  // The phone bottom-sheet geometry lives in LawhaPanel.scss.
+}

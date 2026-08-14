@@ -1,0 +1,42 @@
+-- Initials become the default cursor again, and the picture becomes the opt-in.
+--
+-- This reverses 009, which reversed 005, and the ping-pong is worth explaining
+-- rather than leaving as a diff — 009 argued its case at length and a later
+-- reader would otherwise trust that comment over this code.
+--
+-- 005 shipped `avatar_on_cursor INTEGER NOT NULL DEFAULT 0` and argued that
+-- publishing a photograph of the account holder to everyone in a room is a
+-- privacy choice a default must not make on somebody's behalf. 009 flipped it
+-- to on for every existing row, on the product owner's instruction at the time
+-- ("by default is the picture profile unless disabled"), and noted honestly
+-- that the UPDATE could not tell an account that never decided from one that
+-- decided against.
+--
+-- The instruction now is the other way round: people are shown as their
+-- initials, and "show my profile as my cursor" starts off. So 005's original
+-- reasoning is reinstated, and it was the better argument on the merits — an
+-- opt-in is recoverable by one click on the account page, an opt-out that
+-- already happened is not.
+--
+-- The same honesty 009 owed applies here in mirror image: this cannot
+-- distinguish an account that deliberately turned the picture ON from one that
+-- was merely defaulted into it by 009. Somebody who chose it has their choice
+-- flipped. That is accepted for the same reasons 009 accepted the converse —
+-- one click restores it, and the alternative is leaving every existing account,
+-- which on this deployment is every account there is, on a default the product
+-- no longer has.
+--
+-- Note what this does NOT change: `sharesAvatarOnCursor` in
+-- `socket/identity.ts` still requires the flag AND a stored picture, and
+-- `GET /api/users/:id/avatar` still checks this same column at the only door to
+-- the bytes (invariant 21). Turning the default off narrows what is published;
+-- it does not weaken any check.
+UPDATE users SET avatar_on_cursor = 0;
+
+-- The column's DEFAULT is already 0 and stays 0, so the DDL and the behaviour
+-- now agree for the first time since 009. `UsersRepository.create` names this
+-- column explicitly in its INSERT and is the only INSERT into `users` anywhere
+-- in `src/`, so that literal — not this default — is what a new account gets;
+-- it moves to 0 in the same change as this file. `cursorAvatar.test.ts` pins
+-- the boundary that matters, which is what a freshly registered account
+-- actually ends up with, rather than the DDL.

@@ -1,0 +1,83 @@
+// The reset page — a centred card, deliberately the same shape as the join
+// page and sign-in.
+//
+// Not nested under `.excalidraw`: this is a page of its own, not a surface
+// inside the editor, so the specificity note in LawhaSharePopover.scss does
+// not apply here.
+//
+// A sibling of JoinRoute.scss rather than a shared partial. The two pages have
+// no reason to move together — one is about a board and one is about an
+// account — and a shared `.lw-code-card` would mean every future change to
+// either had to be checked against the other. The vocabulary they do share is
+// the part that is already shared: `--lw-*` tokens, `.lw-field`, `.lw-rules`
+// and `.lw-btn`.
+
+.lw-reset {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--lw-bg);
+  // Set here because this page is a bare centred card rather than a
+  // `LawhaPageShell`, and `.lw-page` is what normally carries it. Without this
+  // the whole card renders in the browser's default serif — which is how the
+  // join page first shipped, and only a screenshot showed it.
+  font-family: var(--lw-font-sans);
+  color: var(--lw-text);
+}
+
+.lw-reset__card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 396px;
+  box-sizing: border-box;
+  padding: 30px 30px 26px;
+  background: var(--lw-surface-95, var(--lw-surface));
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-modal);
+  box-shadow: 0 26px 50px -34px rgba(28, 26, 23, 0.6);
+}
+
+.lw-reset__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-reset__blurb {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+}
+
+.lw-reset__note {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--lw-muted2);
+}
+
+.lw-reset__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lw-reset__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lw-reset__error {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-danger, #b3261e);
+}

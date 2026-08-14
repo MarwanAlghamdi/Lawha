@@ -4,6 +4,16 @@ export const INITIAL_SCENE_UPDATE_TIMEOUT = 5000;
 export const FILE_UPLOAD_TIMEOUT = 300;
 export const LOAD_IMAGES_TIMEOUT = 500;
 export const SYNC_FULL_SCENE_INTERVAL_MS = 20000;
+/**
+ * How often a collaborative board is written to the server.
+ *
+ * Split from the rebroadcast interval above, which it used to share. While
+ * collaborating, `LocalData.pauseSave("collaboration")` is on, so the server
+ * holds the *only* durable copy — and at 20s the first write landed 20 seconds
+ * after the first stroke. 20s was tuned for Firestore's pricing; a local SQLite
+ * compare-and-swap costs about a millisecond.
+ */
+export const SAVE_TO_BACKEND_INTERVAL_MS = 5000;
 export const SYNC_BROWSER_TABS_TIMEOUT = 50;
 export const CURSOR_SYNC_TIMEOUT = 33; // ~30fps
 export const DELETED_ELEMENT_TIMEOUT = 24 * 60 * 60 * 1000; // 1 day
@@ -29,10 +39,13 @@ export enum WS_SUBTYPES {
   USER_VISIBLE_SCENE_BOUNDS = "USER_VISIBLE_SCENE_BOUNDS",
 }
 
-export const FIREBASE_STORAGE_PREFIXES = {
-  shareLinkFiles: `/files/shareLinks`,
-  collabFiles: `/files/rooms`,
-};
+// No leading slash. Previously these carried one while some call sites built
+// the same prefix without it, and only worked because the Firebase loader
+// stripped it back off.
+export const FILE_STORAGE_PREFIXES = {
+  shareLinkFiles: `files/shareLinks`,
+  collabFiles: `files/rooms`,
+} as const;
 
 export const ROOM_ID_BYTES = 10;
 

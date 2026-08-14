@@ -1,0 +1,35 @@
+.lw-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+
+.lw-logo__tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--lw-r-lg);
+  background: var(--lw-invert-bg);
+  color: var(--lw-invert-text);
+  font-family: var(--lw-font-arabic);
+  font-size: 17px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.lw-logo__wordmark {
+  font-family: var(--lw-font-sans);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--lw-text);
+}
+
+.lw-logo__arabic {
+  font-family: var(--lw-font-arabic);
+  font-size: 15px;
+  color: var(--lw-muted);
+}

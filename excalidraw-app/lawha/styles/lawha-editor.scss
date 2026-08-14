@@ -1,0 +1,501 @@
+// Skins Excalidraw's built-in editor chrome to match the Lawha mockups.
+//
+// Everything here is CSS. No component in packages/excalidraw is modified: the
+// toolbar sizes itself from --default-button-size (ToolIcon.scss), islands from
+// --island-bg-color / --shadow-island, and the rest is scoped selectors. That
+// is the whole reason the consolidation does not need a fork.
+
+.excalidraw {
+  // ---------------------------------------------------------------------
+  // Toolbar: 42x42 tools, r11 shell, filled-invert active state
+  // ---------------------------------------------------------------------
+  .App-toolbar {
+    // Scoped to the toolbar so dialogs and property panels keep the stock 2rem.
+    --default-button-size: 2.625rem;
+
+    border-radius: var(--lw-r-tool);
+    border: var(--lw-border-width) solid var(--lw-border2);
+    background: var(--lw-surface-96);
+    box-shadow: var(--lw-shadow-toolbar);
+    padding: 5px;
+    gap: 3px;
+
+    .ToolIcon__icon {
+      border-radius: var(--lw-r-md);
+    }
+
+    .ToolIcon_type_radio:checked + .ToolIcon__icon,
+    .ToolIcon__icon[aria-pressed="true"],
+    .ToolIcon_type_button.active .ToolIcon__icon {
+      background: var(--lw-invert-bg);
+      color: var(--lw-invert-text);
+
+      svg {
+        color: var(--lw-invert-text);
+      }
+    }
+
+    // An unarmed tool needs to answer the pointer. Upstream leaves this to
+    // `--button-hover-bg`, which on the Lawha palette lands close enough to
+    // the island's own surface to read as nothing happening.
+    .ToolIcon_type_toggle:hover:not(:disabled) .ToolIcon__icon {
+      background: var(--lw-sunken);
+    }
+
+    // Keyboard hints sit in the corner in mono at a deliberately tiny size —
+    // and, since they are a learning aid rather than a label, only while the
+    // toolbar is being looked at. Ten numerals at 8.5px are unreadable before
+    // you have learned the shortcut and clutter once you have.
+    //
+    // Nothing is lost by hiding them. Every one of these buttons carries the
+    // same fact in its `title` ("Rectangle — R or 2") and in
+    // `aria-keyshortcuts`, so tooltips and screen readers are untouched; this
+    // rule only decides whether the digit is *painted*. A touch device, which
+    // has no keyboard for the digit to describe, simply never fires the
+    // reveal and is better off for it.
+    //
+    // `:focus-within` is not decoration: it is what keeps the hints up for
+    // somebody tabbing the row, who cannot hover.
+    .ToolIcon__keybinding {
+      font-family: var(--lw-font-mono);
+      font-size: 8.5px;
+      color: var(--lw-muted3);
+      right: 3px;
+      bottom: 2px;
+      opacity: 0;
+      transition: opacity 140ms ease;
+    }
+
+    &:hover .ToolIcon__keybinding,
+    &:focus-within .ToolIcon__keybinding {
+      opacity: 1;
+    }
+
+    .App-toolbar__divider {
+      background: var(--lw-divider);
+      margin: 0 2px;
+    }
+
+    // The overflow trigger is the one control upstream styles to disappear —
+    // `background-color: transparent` on `:hover` as well as at rest — so it
+    // reads as three loose dots parked beside the row rather than as a member
+    // of it. Given the same hover as every tool, it joins the row.
+    .App-toolbar__extra-tools-trigger:hover {
+      background: var(--lw-sunken);
+      border-radius: var(--lw-r-md);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Toolbar: group separators
+  // -------------------------------------------------------------------------
+  // Thirteen controls in one undivided run is a list, not a toolbar. Four
+  // hairlines split it into what it already is —
+  //
+  //   lock │ navigate │ shapes │ connectors │ ink │ media │ more
+  //
+  // — reusing the exact geometry of the two `.App-toolbar__divider`s upstream
+  // already puts in the row (1px x 1.5rem, centred; Toolbar.scss:20-24), so
+  // all six read as one system rather than as two ideas about separators.
+  //
+  // Keyed on `data-testid`, and that is the whole trick. `:nth-child` is the
+  // obvious way to write this and it would be silently wrong: the row's length
+  // is not fixed. `PenModeButton` appears when a pen is detected; the lock
+  // button *and its divider* vanish when the host controls the active tool;
+  // Selection swaps for Lasso on preference; Image disappears under
+  // `UIOptions.tools.image === false`. Each of those shifts an index-based
+  // rule onto a neighbouring tool, and a misplaced hairline is the kind of
+  // defect nobody files. With testids, a tool that goes away takes its own
+  // separator with it and the other three do not move.
+  //
+  // `.ToolIcon` is already `position: relative` (ToolIcon.scss:8), so the
+  // pseudo-element anchors to the button with nothing else to arrange, and
+  // `inset-inline-start` makes RTL free.
+  .App-toolbar [data-testid="toolbar-rectangle"],
+  .App-toolbar [data-testid="toolbar-arrow"],
+  .App-toolbar [data-testid="toolbar-freedraw"],
+  .App-toolbar [data-testid="toolbar-image"] {
+    margin-inline-start: 7px;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset-inline-start: -5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 1px;
+      height: 1.5rem;
+      background: var(--lw-divider);
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // The hint under the toolbar
+  // -------------------------------------------------------------------------
+  // Upstream paints this as bare `--color-gray-40` text directly onto the
+  // canvas, which is legible over an empty board and over nothing else — the
+  // one surface in the editor guaranteed to have arbitrary ink behind it.
+  //
+  // The positioning is upstream's and stays that way: `position: absolute;
+  // top: 100%`, out of flow, `pointer-events: none`. It has never shifted the
+  // toolbar and must not start; only the paint changes.
+  //
+  // `align-items: center` is what does the work. `.HintViewer` is a flex
+  // column, so its default `stretch` makes the span the full width of the
+  // island and a pill drawn on it would be a full-width bar. Centring lets the
+  // span shrink to its text.
+  .App-toolbar .HintViewer {
+    align-items: center;
+    margin-top: 9px;
+  }
+
+  .App-toolbar .HintViewer > span {
+    padding: 5px 12px;
+    border-radius: var(--lw-r-pill);
+    border: var(--lw-border-width) solid var(--lw-border3);
+    background: var(--lw-surface-90);
+    backdrop-filter: blur(6px);
+    box-shadow: var(--lw-shadow-island);
+    color: var(--lw-muted);
+    font-size: 11.5px;
+    line-height: 1.4;
+    // Long enough for the longest hint at one or two lines, narrow enough that
+    // it stays a caption; `92vw` is the phone, where the island is the width
+    // of the screen and `min()` is what stops the pill reaching both edges.
+    max-width: min(420px, 92vw);
+  }
+
+  // `Scroll wheel` and `Space` are keys. Upstream's bordered box says so at
+  // 10px in the browser's monospace; this says it in Lawha's.
+  .App-toolbar .HintViewer kbd {
+    font-family: var(--lw-font-mono);
+    font-size: 10px;
+    border: 1px solid var(--lw-border);
+    border-radius: var(--lw-r-xs);
+    background: var(--lw-sunken);
+    color: var(--lw-text3);
+    padding: 1px 4px;
+  }
+
+  // ---------------------------------------------------------------------
+  // Laser colour, mounted in the toolbar island
+  // ---------------------------------------------------------------------
+  // `LawhaLaserColor` portals its trigger into `.App-toolbar`'s tool row while
+  // the laser tool is active, so the setting sits beside the tool it sets. It
+  // therefore has to read as one of the toolbar's own buttons rather than as a
+  // Lawha pill that wandered in, and everything below is derived from
+  // `--default-button-size` — scoped to the toolbar a few lines up — so it
+  // tracks the tool buttons at every pointer type without repeating a number.
+  //
+  // Three classes deep on purpose (invariant 12). `.lw-btn` in
+  // lawha-primitives.scss and `.excalidraw .lw-laser-trigger` in
+  // LawhaTopBar.scss both style this same element; a rule that merely tied
+  // with the latter would leave the winner decided by @use order in
+  // styles/index.scss, which is how the phone sheet once inherited the
+  // popover's width.
+  //
+  // The higher specificity also settles the focus ring quietly: lawha-a11y
+  // gives every `[class^="lw-"] button` `border-radius: inherit` on
+  // `:focus-visible`, and inheriting from the anchor — which has no radius —
+  // is what once turned the round swatches square. Here that rule is outranked
+  // rather than patched, so no `:focus-visible` override is needed.
+  .App-toolbar .lw-laser-anchor {
+    display: flex;
+    align-items: center;
+  }
+
+  .App-toolbar .lw-laser-trigger {
+    width: var(--default-button-size);
+    height: var(--default-button-size);
+    // .lw-btn's floor is the phone tap target; inside the toolbar the tool
+    // buttons already are one, and leaving it set would make this button
+    // taller than its neighbours.
+    min-height: 0;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+    // Matches `.App-toolbar .ToolIcon__icon` above, so it lines up with the
+    // tools rather than sitting in a pill of its own.
+    border-radius: var(--lw-r-md);
+    border: none;
+    background: transparent;
+    box-shadow: none;
+
+    &:hover:not(:disabled) {
+      background: var(--lw-sunken);
+      // .lw-btn's hover recolours the border and the label. There is no label
+      // here and the border is gone, and tinting the swatch would misreport
+      // the colour that is actually chosen.
+      border-color: transparent;
+      color: var(--lw-text2);
+    }
+  }
+
+  // With no label beside it the swatch *is* the button, so it is bigger than
+  // the 11px dot the app bar used. The ring keeps a pale colour visible
+  // against the toolbar's own surface.
+  .App-toolbar .lw-laser-trigger__dot {
+    width: 16px;
+    height: 16px;
+    box-shadow: 0 0 0 1.5px var(--lw-border);
+  }
+
+  // ---------------------------------------------------------------------
+  // Islands
+  // ---------------------------------------------------------------------
+  .Island {
+    border: var(--lw-border-width) solid var(--lw-border2);
+    border-radius: var(--lw-r-lg);
+  }
+
+  // ---------------------------------------------------------------------
+  // The main menu, lifted into the Lawha app bar
+  // ---------------------------------------------------------------------
+  // Target row: [hamburger][back: All boards]  Board name  …  avatars. The bar
+  // reserves the slot with `padding-inline-start` (LawhaTopBar.scss); this is
+  // the half that moves the trigger into it.
+  //
+  // It is done with CSS because the trigger cannot be relocated in the DOM.
+  // Portalling it into the bar looks equivalent and is not: its position would
+  // survive — Radix Popper uses `strategy: "fixed"` with live anchor
+  // measurement — but `DropdownMenuContent` decides what counts as an outside
+  // click by asking whether the event target is contained in
+  // `.dropdown-menu-event-wrapper`, the `display: contents` div that wraps the
+  // trigger *and* the content. Portal the trigger out of that wrapper and a
+  // pointerdown on it reads as an OUTSIDE click; `useOutsideClick` binds
+  // `pointerdown`, which fires before `click`, so the menu closes and the
+  // trigger's own toggle immediately reopens it from the cleared state.
+  // Clicking the hamburger to close the menu then silently stops working —
+  // deterministically, not intermittently. A proxy button in the bar flipping
+  // `appState.openMenu` is out for a related reason: the real trigger is the
+  // popper's anchor, so hiding it puts the menu at a zero rect.
+  //
+  // The trigger's hit area, named because three rules depend on it: the button
+  // itself, the lift below, and the bar's reserved inline-start padding.
+  --lawha-menu-trigger-size: 40px;
+
+  // How far the top-left cluster has to travel upwards from where LayerUI puts
+  // it to land on the bar's first control row. Measured from
+  // `.FixedSideContainer_side_top`'s own top, which the rule further down sets
+  // to `--lawha-topbar-height + --lawha-topbar-gap`; the subtractions are the
+  // bar's top padding and the half-difference that centres a 40px button on a
+  // 44px control row. Positive means upwards — the rules using it negate it.
+  --lawha-menu-lift: calc(
+    var(--lawha-topbar-height, 0px) + var(--lawha-topbar-gap) -
+      var(--lawha-topbar-pad-top) -
+      (var(--lw-h-md) - var(--lawha-menu-trigger-size)) / 2
+  );
+
+  // The hamburger is a 40x40 hit area inside a 5px-padded shell.
+  .excalidraw-ui-top-left .dropdown-menu-button {
+    width: var(--lawha-menu-trigger-size);
+    height: var(--lawha-menu-trigger-size);
+    border-radius: var(--lw-r-sm);
+  }
+
+  // Desktop and tablet, where LayerUI renders the cluster into a
+  // `position: relative` wrapper (LayerUI.tsx:227-235) that is also the
+  // containing block for the welcome-screen hint below.
+  //
+  // Out of flow on purpose. A `position: relative` offset would move the
+  // trigger visually while leaving its 40px box reserved, and the row under the
+  // bar — the row this change exists to free — would still be there, empty,
+  // holding the styles panel 40px lower than the toolbar beside it.
+  .App-menu_top__left .excalidraw-ui-top-left {
+    position: absolute;
+    inset-inline-start: 0;
+    top: calc(-1 * var(--lawha-menu-lift));
+  }
+
+  // Re-anchoring the welcome screen's menu hint is not optional, and this is
+  // the whole risk of the change. `WelcomeScreenMenuHintTunnel.Out` is a
+  // *sibling* of the cluster inside that relative wrapper, anchored at
+  // `top: 100%` of it — which means "just under the hamburger" only for as long
+  // as the hamburger is what gives the wrapper its height. Taking the cluster
+  // out of flow collapses the wrapper to zero, so 100% resolves to 0 and the
+  // hint's arrow points at empty canvas. Lawha does render
+  // `WelcomeScreen.Hints.MenuHint` (AppWelcomeScreen.tsx), so this is a surface
+  // a first-time user actually sees.
+  //
+  // Both elements are now positioned from the same `--lawha-menu-lift`, so they
+  // move together by construction rather than by two numbers kept in step.
+  .App-menu_top__left .welcome-screen-decor-hint--menu {
+    top: calc(var(--lawha-menu-trigger-size) - var(--lawha-menu-lift));
+  }
+
+  // Phone takes an entirely separate path: MobileMenu renders its OWN
+  // `.excalidraw-ui-top-left` (MobileMenu.tsx:95-100) inside `.App-top-bar`, so
+  // none of the rules above reach it and it needs its own.
+  //
+  // In flow here, unlike the desktop rule. On this path the cluster shares one
+  // flex row with `.excalidraw-ui-top-right` — pen mode, the sidebar trigger,
+  // exit-view-mode — which must stay below the bar; taking the left half out of
+  // flow would collapse the row and drag the right half up with it. There is no
+  // relative wrapper and no menu hint on this path, so nothing else depends on
+  // the box staying put.
+  .App-top-bar .excalidraw-ui-top-left {
+    position: relative;
+    top: calc(-1 * var(--lawha-menu-lift));
+  }
+
+  // ---------------------------------------------------------------------
+  // Footer clusters: zoom, undo/redo
+  // ---------------------------------------------------------------------
+  .zoom-actions,
+  .undo-redo-buttons {
+    border-radius: var(--lw-r-lg);
+    border: var(--lw-border-width) solid var(--lw-border2);
+    background: var(--lw-surface-96);
+    box-shadow: var(--lw-shadow-island);
+  }
+
+  .zoom-actions .zoom-button,
+  .undo-redo-buttons .ToolIcon__icon {
+    border-radius: var(--lw-r-sm);
+  }
+
+  // Zoom readout is a number: mono, tabular, fixed width so it does not jitter.
+  .zoom-actions .zoom-button + div,
+  .reset-zoom-button {
+    font-family: var(--lw-font-mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 44px;
+    text-align: center;
+  }
+
+  // ---------------------------------------------------------------------
+  // Surfaces the Lawha chrome replaces
+  // ---------------------------------------------------------------------
+
+  // The presence stack lives in the Lawha top bar instead. UserList is
+  // rendered unconditionally by LayerUI with no prop to disable it, so CSS is
+  // the correct non-invasive way to retire it.
+  //
+  // THREE selectors, not two, and the third is the one that was missing. The
+  // canvas top-right copy was hidden from the day this rule was written — but
+  // `MainMenu` renders its OWN `UserList` on a phone, and that copy has a
+  // working follow toggle of its own. So a phone showed two follow surfaces at
+  // once: Lawha's stack, and upstream's list underneath it, each with its own
+  // idea of who you were following. Hidden the same way, for one follow
+  // surface rather than two that can disagree.
+  .layer-ui__wrapper__top-right .UserList,
+  .layer-ui__wrapper__top-right .UserList__wrapper,
+  .dropdown-menu .UserList {
+    display: none;
+  }
+
+  // ---------------------------------------------------------------------
+  // Follow mode
+  // ---------------------------------------------------------------------
+  // Upstream's badge — "You are following X" across the bottom of the canvas —
+  // drawn in Lawha's palette instead of `--color-primary-*`, which resolves to
+  // Excalidraw's violet and is the one obviously-not-Lawha thing left on the
+  // board while follow mode is on.
+  //
+  // This is a skin, not a replacement: the element, its text and its click
+  // target are upstream's, and no file under packages/ is touched (invariant
+  // 10).
+  // DOUBLED class, `.follow-mode.follow-mode`, and it is not a typo. This file
+  // is nested inside `.excalidraw`, and upstream's rule is `.excalidraw
+  // .follow-mode` — identical specificity, so which one wins would depend on
+  // import order. Invariant 12 records the same trap costing the phone sheet
+  // its width. The repetition buys one class's worth of specificity and says
+  // out loud that it is deliberate.
+  //
+  // NOTE what is NOT set here: `background`. `.follow-mode` is a transparent,
+  // `pointer-events: none` overlay stretched across the whole viewport, and
+  // its only paint is a 2px border. Giving it a background tints the entire
+  // canvas — which is exactly the wrong lesson to learn from the fact that the
+  // badge inside it does take one.
+  .follow-mode.follow-mode {
+    border-color: var(--lw-accent);
+
+    .follow-mode__badge {
+      background-color: var(--lw-accent);
+      color: var(--lw-invert-text);
+      border-radius: var(--lw-r-sm);
+    }
+
+    .follow-mode__disconnect-btn {
+      border-radius: var(--lw-r-xs);
+
+      &:hover {
+        background-color: var(--lw-accent-d);
+      }
+
+      &:active {
+        background-color: var(--lw-accent-d);
+      }
+    }
+  }
+
+  // Shortcuts remain reachable from the main menu and `?`.
+  .help-icon {
+    display: none;
+  }
+
+  // The sidebar trigger, and whatever else upstream parks beside it.
+  //
+  // It advertised the shape library from the canvas's top-right corner, which
+  // in Lawha is the one corner with nothing else in it — the board, presence,
+  // Share and the account all live in the top bar, so this read as a leftover
+  // from a layout that no longer exists. The library itself is not going
+  // anywhere: `AppMainMenu` has a "Shape library" item that opens the same
+  // sidebar, and `0` still works.
+  //
+  // The class is on an inner `<div>`, so the rule has to reach the `<button>`
+  // that wraps it — hence `:has()`. Hiding the wrapper outright would take pen
+  // mode and exit-view-mode with it, and both are real.
+  //
+  // Declared here rather than removed in TSX on purpose. `LayerUI` mounts the
+  // trigger through `withInternalFallback`, so the only way to displace it from
+  // app code is to render *another* trigger — which substitutes rather than
+  // removes, and lands in the same tunnel. CSS is the honest tool; a `packages/`
+  // edit for this would breach invariant 10 for a cosmetic change.
+  .layer-ui__wrapper__top-right button:has(.default-sidebar-trigger),
+  .App-top-bar .excalidraw-ui-top-right button:has(.default-sidebar-trigger) {
+    display: none;
+  }
+
+  // ---------------------------------------------------------------------
+  // Full-bleed offset
+  // ---------------------------------------------------------------------
+  // The Lawha top bar floats over the canvas, so the toolbar row and the
+  // top-right cluster have to start below it. The bar publishes its own
+  // measured height, which is what keeps this correct while it wraps to a
+  // second row on narrow viewports.
+  //
+  // The top-LEFT cluster is the exception: it is lifted back out of here and
+  // into the bar's own row by the rules above, which measure from this same
+  // `top` and so cannot fall out of step with it.
+  .FixedSideContainer_side_top {
+    top: calc(var(--lawha-topbar-height, 0px) + var(--lawha-topbar-gap));
+  }
+
+  // Dialogs and popovers keep the Lawha radius.
+  .Dialog .Island {
+    border-radius: var(--lw-r-modal);
+  }
+
+  .Modal__background {
+    background: var(--lw-scrim);
+  }
+}
+
+// Coarse pointers get a larger tool target than the 42px design size.
+@media (pointer: coarse) {
+  .excalidraw .App-toolbar {
+    --default-button-size: 2.75rem;
+  }
+}
+
+// The keybinding fade, cut. lawha-a11y.scss has the blanket rule for this, and
+// it is scoped to `lw-` class names — `.ToolIcon__keybinding` is upstream's, so
+// it needs its own line rather than a widened selector there. The hints still
+// appear and disappear; they just stop animating, which is the requirement.
+@media (prefers-reduced-motion: reduce) {
+  .excalidraw .App-toolbar .ToolIcon__keybinding {
+    transition: none;
+  }
+}

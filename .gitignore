@@ -27,3 +27,117 @@ dev-dist
 html
 meta*.json
 .claude
+lawha-data
+
+# The filled-in copy of lawha.env.example. It holds LAWHA_MASTER_PASSWORD —
+# a password that signs in as any account — and LAWHA_ADMIN_PASSWORD, so it is
+# equivalent to the database itself. The example file stays committed; this one
+# never does.
+lawha.env
+
+# ...and the timestamped copies a hand-edit leaves behind. The rule above is an
+# exact filename, so `lawha.env.bak-20260814-074937` was NOT covered by it and
+# was committable — holding the same master password as the original. The `/.env`
+# rule below already learned this lesson and grew a `/.env.bak-*` sibling; this
+# one had not, and the gap only showed up when a backup was actually taken.
+lawha.env.bak-*
+lawha.env.*.bak
+lawha.env.save
+
+# Compose's own interpolation file, which holds this machine's addresses —
+# LAWHA_PUBLIC_ORIGIN and optionally LAWHA_DATA_DIR. It has to be a separate
+# file from lawha.env: compose interpolates `${...}` from the shell and from
+# ./.env ONLY, never from an `env_file:`, which reaches the container and
+# nothing else. Machine-specific, so it is not committed.
+#
+# Note this is /.env at the root only — .env.development and .env.production
+# are Vite's, are shared rather than local, and stay committed.
+/.env
+
+# Timestamped copies of the above, which `run.sh` and hand-edits leave behind.
+# `/.env` matches that exact name and nothing else, so a backup of it was
+# committable — and the next one to be made might hold a filled-in
+# NGROK_AUTHTOKEN rather than two dead variables.
+/.env.bak-*
+
+# Playwright visual-regression suite (roadmap #25).
+# Baseline screenshots under e2e/**/*-snapshots/ are NOT ignored — they are
+# the committed baseline. Only run artifacts and the shared-account session
+# are.
+/test-results
+/playwright-report
+/playwright/.cache
+/blob-report
+/e2e/.auth
+
+# Local code-intelligence indexes. Machine-specific, rebuilt on demand, and
+# written by whichever tool the session happens to use — so all of them are
+# listed rather than the current favourite. `.infigraph/` alone is 9.5MB of
+# binary index and its MCP server rewrites it in the background, which is how
+# it turned up staged during an unrelated commit.
+graphify-out/
+.infigraph/
+.serena/
+
+# Self-signed dev certificates for LAN testing (machine-specific).
+certs/
+
+# Subagent-driven development scratch: ledgers, briefs, review packages.
+.superpowers/
+
+# One deployment's own facts: its public URL, its administrator's username, which
+# of its protections are switched off. This is the material that used to sit in
+# `instruction.md` §13 — a TRACKED file — where publishing the repository would
+# have handed a reader a live endpoint and told them rate limiting was off.
+#
+# The pattern is `*.local.md`, not one filename, so the next person who writes
+# their deployment down gets the same protection without having to know this
+# comment exists.
+*.local.md
+
+# The live database and its write-ahead log, wherever they are put. `lawha-data`
+# above only covers the default location; LAWHA_DB_PATH can point anywhere, and a
+# stray copy taken while debugging lands wherever the shell happened to be.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Backup artefacts, and the key that opens them. `*.db` above stops at the
+# plaintext database and covers none of what the encryption procedure produces —
+# while `docs/configuration.md` says `age-keygen -o lawha-backup.key` and
+# `restore … --identity ./lawha-backup.key`, both repo-relative, so following
+# that procedure from this directory drops an age PRIVATE key into the working
+# tree with nothing to stop `git add -A` taking it.
+#
+# The archive is the worse half. LAWHA_BACKUP_CONFIG mirrors `lawha.env` and
+# `certs/` into it (ADR 0020), so one `.age` or `.tar` holds every board, the
+# master password and the CA private key at once — and the docs say plainly that
+# losing the age key loses every backup, which makes it the single most valuable
+# file this repository can be standing next to.
+*.age
+*.key
+*.tar
+*.tar.gz
+*.tgz
+key-material/
+
+# The local issue/spec drafting area `docs/agents/issue-tracker.md` describes.
+# It does not exist yet, and it is ignored BEFORE it does: the workflow that
+# creates it writes half-formed tickets and internal notes, and the first one
+# would otherwise have arrived as a tracked file in a public repository.
+.scratch/
+
+# The working brief and the process material behind it. Kept on disk, not
+# published: `CLAUDE.md` is the contributor/agent brief, `docs/superpowers/`
+# holds the design specs and implementation plans features were built from, and
+# `docs/agents/` the conventions an agent follows here. Useful to whoever works
+# in this checkout; noise to somebody who just wants to run Lawha.
+#
+# What a reader needs instead is already published: the 25 invariants live in
+# `docs/lawha-roadmap.md` §2 and every decision has an ADR in `docs/adr/`.
+CLAUDE.md
+docs/superpowers/
+docs/agents/
+.github/copilot-instructions.md

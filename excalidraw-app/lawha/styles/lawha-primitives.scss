@@ -1,0 +1,215 @@
+// The three building blocks every Lawha surface is made of.
+//
+// The mockups are visually varied but structurally repetitive: a translucent
+// surface, a 1.5px border, a radius from the scale, and a long soft shadow.
+// Rather than restate that per component, it lives here once.
+
+@mixin lw-island($radius: var(--lw-r-lg), $shadow: var(--lw-shadow-island)) {
+  background: var(--lw-surface-96);
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: $radius;
+  box-shadow: $shadow;
+}
+
+@mixin lw-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--lw-h-md);
+  // The floor is the point: it keeps every control tappable on a phone even
+  // when the visual height would allow smaller.
+  min-height: var(--lw-h-md);
+  padding: 0 14px;
+  border-radius: var(--lw-r-lg);
+  border: var(--lw-border-width) solid var(--lw-border);
+  background: var(--lw-surface-94);
+  color: var(--lw-text2);
+  font-family: var(--lw-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.lw-btn {
+  @include lw-control;
+
+  &:hover:not(:disabled) {
+    border-color: var(--lw-accent);
+    color: var(--lw-accent);
+  }
+
+  &:disabled {
+    color: var(--lw-muted3);
+    cursor: default;
+  }
+}
+
+// The single filled button per surface: Share, Save changes, Create account.
+.lw-btn--primary {
+  border: none;
+  background: var(--lw-invert-bg);
+  color: var(--lw-invert-text);
+  padding: 0 17px;
+  font-size: 13.5px;
+
+  &:hover:not(:disabled) {
+    background: var(--lw-invert-bg-h);
+    color: var(--lw-invert-text);
+  }
+
+  // Keeping the filled background and only dimming the label left a disabled
+  // primary looking like an enabled one. The fill is what reads as "this is
+  // the action", so the fill is what has to go.
+  &:disabled {
+    background: var(--lw-sunken);
+    color: var(--lw-muted2);
+  }
+}
+
+.lw-btn--danger {
+  border-color: var(--lw-danger-b);
+  color: var(--lw-danger);
+  background: transparent;
+
+  &:hover:not(:disabled) {
+    background: var(--lw-danger-bg);
+    border-color: var(--lw-danger);
+    color: var(--lw-danger);
+  }
+}
+
+.lw-btn--icon {
+  width: var(--lw-h-md);
+  padding: 0;
+  justify-content: center;
+}
+
+// A non-interactive readout: save status, sync assurance, presence count.
+.lw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--lw-h-md);
+  padding: 0 13px;
+  border-radius: var(--lw-r-lg);
+  border: var(--lw-border-width) solid var(--lw-border);
+  background: var(--lw-surface-94);
+  font-family: var(--lw-font-mono);
+  font-size: 12px;
+  color: var(--lw-text2);
+  white-space: nowrap;
+}
+
+.lw-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: var(--lw-r-xs);
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.lw-chip--purple {
+  background: var(--lw-chip-purple);
+  color: var(--lw-stroke-purple);
+}
+
+.lw-chip--green {
+  background: var(--lw-chip-green);
+  color: var(--lw-stroke-green);
+}
+
+.lw-chip--orange {
+  background: var(--lw-chip-orange);
+  color: var(--lw-accent-d);
+}
+
+.lw-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--lw-presence-1);
+}
+
+// A presence avatar. Declared globally rather than under `.excalidraw` because
+// the same disc appears on the account page, which is outside the editor.
+.lw-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--lw-surface);
+  color: #fff;
+  font-family: var(--lw-font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.lw-avatar--sm {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+  cursor: default;
+}
+
+.lw-avatar--lg {
+  width: 64px;
+  height: 64px;
+  border-width: 0;
+  font-size: 22px;
+  cursor: default;
+}
+
+.lw-avatar--overflow {
+  background: var(--lw-sunken);
+  color: var(--lw-text2);
+  cursor: default;
+}
+
+// The theme toggle's glyph: a ring filled down one side. Drawn in CSS rather
+// than shipped as an icon so it inherits currentColor on hover.
+.lw-theme-glyph {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  box-shadow: inset -4px -1px 0 0 currentColor;
+  flex: 0 0 auto;
+}
+
+// Dark is on. The control keeps the ambient surface — inverting it would put a
+// light button on a dark page, the opposite of what the label now says — so the
+// "on" state is carried by the accent and a fully filled glyph instead.
+.lw-theme-toggle--dark {
+  border-color: var(--lw-accent);
+  color: var(--lw-accent);
+
+  .lw-theme-glyph {
+    box-shadow: inset 0 0 0 7px currentColor;
+  }
+}
+
+.lw-dot--pulse {
+  animation: lw-pulse-dot 2.4s ease-in-out infinite;
+}
+
+@keyframes lw-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}

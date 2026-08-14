@@ -1,0 +1,80 @@
+# The gates, run on GitHub.
+#
+# This replaces twelve workflows inherited from upstream Excalidraw. Most of
+# them referenced secrets that do not exist on a fork and would have failed on
+# every push; two of them were worse than noise — `publish-docker.yml` pushed
+# `excalidraw/excalidraw:latest` to Docker Hub and `autorelease-excalidraw.yml`
+# npm-published `@excalidraw/*`, both triggered by a branch named `release`.
+# Neither belongs to this repository.
+#
+# The gate set below must be run locally before pushing. Note that `yarn test:all` is NOT used: it omits `test:server` and
+# `test:typecheck:server`, so a green `test:all` says nothing about the server.
+# The two jobs run in parallel and the split is by failure attribution — a
+# formatting failure and a broken relay should not look alike in the checks
+# list.
+
+name: CI
+
+# Lawha's branches only. `master` in this repository is upstream Excalidraw,
+# which has no `lawha-server` — running these gates there fails on the server
+# typecheck for a reason that has nothing to do with anything being wrong.
+on:
+  push:
+    branches: [lawha, main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer worthless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Types, lint, format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.x
+          cache: yarn
+
+      # `--frozen-lockfile`: a CI run that silently resolves a different tree
+      # than the lockfile pins is testing something nobody has on their disk.
+      - run: yarn install --frozen-lockfile
+
+      - name: Typecheck (app and packages)
+        run: yarn test:typecheck
+
+      - name: Typecheck (lawha-server)
+        run: yarn test:typecheck:server
+
+      - name: Lint
+        run: yarn test:code
+
+      # Prettier's ignore list here is `.eslintignore`, not `.gitignore`.
+      - name: Format
+        run: yarn test:other
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.x
+          cache: yarn
+
+      - run: yarn install --frozen-lockfile
+
+      - name: App and packages
+        run: yarn test:app --watch=false
+
+      # `vitest run` followed by `node --test scripts/*.test.mjs` — the backup
+      # and restore scripts are covered by node:test, which vitest does not
+      # collect, so this one script runs two different runners.
+      - name: lawha-server
+        run: yarn test:server

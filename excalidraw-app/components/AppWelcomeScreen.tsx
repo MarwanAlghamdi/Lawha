@@ -1,80 +1,41 @@
-import { loginIcon } from "@excalidraw/excalidraw/components/icons";
-import { POINTER_EVENTS } from "@excalidraw/common";
-import { useI18n } from "@excalidraw/excalidraw/i18n";
 import { WelcomeScreen } from "@excalidraw/excalidraw/index";
 import React from "react";
 
-import { isExcalidrawPlusSignedUser } from "../app_constants";
+import { LawhaLogo } from "../lawha/chrome/LawhaLogo";
 
-export const AppWelcomeScreen: React.FC<{
-  onCollabDialogOpen: () => any;
-  isCollabEnabled: boolean;
-}> = React.memo((props) => {
-  const { t } = useI18n();
-  let headingContent;
-
-  if (isExcalidrawPlusSignedUser) {
-    headingContent = t("welcomeScreen.app.center_heading_plus")
-      .split(/(Excalidraw\+)/)
-      .map((bit, idx) => {
-        if (bit === "Excalidraw+") {
-          return (
-            <a
-              style={{ pointerEvents: POINTER_EVENTS.inheritFromUI }}
-              href={`${
-                import.meta.env.VITE_APP_PLUS_APP
-              }?utm_source=excalidraw&utm_medium=app&utm_content=welcomeScreenSignedInUser`}
-              key={idx}
-            >
-              Excalidraw+
-            </a>
-          );
-        }
-        return bit;
-      });
-  } else {
-    headingContent = (
-      <>
-        {t("welcomeScreen.app.center_heading")}
-        <br />
-        {t("welcomeScreen.app.center_heading_line2")}
-        <br />
-        {t("welcomeScreen.app.center_heading_line3")}
-      </>
-    );
-  }
-
+export const AppWelcomeScreen: React.FC = React.memo(() => {
   return (
     <WelcomeScreen>
       <WelcomeScreen.Hints.MenuHint>
-        {t("welcomeScreen.app.menuHint")}
+        Export, preferences, language
       </WelcomeScreen.Hints.MenuHint>
       <WelcomeScreen.Hints.ToolbarHint />
-      <WelcomeScreen.Hints.HelpHint />
+      {/*
+        No HelpHint: it points at the help button in the bottom-right corner,
+        which the consolidated UI removes. Shortcuts remain on `?` and in the
+        main menu.
+      */}
       <WelcomeScreen.Center>
-        <WelcomeScreen.Center.Logo />
+        <WelcomeScreen.Center.Logo>
+          <LawhaLogo />
+        </WelcomeScreen.Center.Logo>
         <WelcomeScreen.Center.Heading>
-          {headingContent}
+          A board is yours alone until you share it.
+          <br />
+          Share one and it turns live — cursors, names, edits.
         </WelcomeScreen.Center.Heading>
         <WelcomeScreen.Center.Menu>
           <WelcomeScreen.Center.MenuItemLoadScene />
           <WelcomeScreen.Center.MenuItemHelp />
-          {props.isCollabEnabled && (
-            <WelcomeScreen.Center.MenuItemLiveCollaborationTrigger
-              onSelect={() => props.onCollabDialogOpen()}
-            />
-          )}
-          {!isExcalidrawPlusSignedUser && (
-            <WelcomeScreen.Center.MenuItemLink
-              href={`${
-                import.meta.env.VITE_APP_PLUS_LP
-              }/plus?utm_source=excalidraw&utm_medium=app&utm_content=welcomeScreenGuest`}
-              shortcut={null}
-              icon={loginIcon}
-            >
-              Sign up
-            </WelcomeScreen.Center.MenuItemLink>
-          )}
+          {/*
+            No "Live collaboration" item, for the reason AppMainMenu.tsx sets
+            out at length: it was a second way to start a session that handed
+            out a link with no owner check, and whose "Stop session" left
+            sharing switched on. Share lives in the top bar.
+
+            The Excalidraw+ sign-up link is deliberately absent too: Lawha is
+            self-hosted, and there is no upsell to point at.
+          */}
         </WelcomeScreen.Center.Menu>
       </WelcomeScreen.Center>
     </WelcomeScreen>

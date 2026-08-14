@@ -357,3 +357,147 @@ export const normalizeInputColor = (color: string): string | null => {
 
   return null;
 };
+
+// collaborator presence palette (Lawha)
+// -----------------------------------------------------------------------------
+
+/**
+ * The twelve colours a collaborator can be assigned.
+ *
+ * A closed enum rather than a hash-derived hue, because the same user has to
+ * read as the same colour in two places rendered by completely different code:
+ * the avatar stack in the DOM, and the cursor drawn on the canvas. A per-user
+ * palette *index* is the shared value; the hex forms below are just how each
+ * side spells it.
+ *
+ * Twelve, laid out by `hue` as a wheel-shaped grid in the picker. Indices 0-4
+ * are the original five and keep their meaning — `users.color_index` rows in
+ * the database are these indices, so reordering the array would silently
+ * repaint everyone.
+ *
+ * `oklch` is for CSS. `hex` is for canvas fillStyle, which cannot be relied on
+ * to parse oklch() in older Safari and embedded WebViews.
+ *
+ * `hexDark` is the pre-image of `hex` under the interactive canvas's dark-mode
+ * filter (`invert(93%) hue-rotate(180deg)`, see css/styles.scss). Drawing
+ * `hexDark` in dark mode therefore lands on `hex` on screen, keeping the canvas
+ * cursor matched to the DOM avatar — which is *not* filtered.
+ *
+ * Every entry is chosen so that
+ *
+ *  - its `hexDark` is inside sRGB, so the round trip is exact rather than
+ *    clamped (three of the original five clamped, and rendered a visibly
+ *    different colour in dark mode than in light);
+ *  - the name chip clears WCAG AA in **both** themes. The chip is filled with
+ *    the colour and labelled with the lightest ink the surface can produce:
+ *    `#ffffff` in light, and — because the dark filter turns white into
+ *    `#121212` — `#000000` in dark, which comes out as `#ededed`. Requiring
+ *    4.5:1 against `#ededed` is the stricter of the two, so every entry clears
+ *    4.6:1 there and better than 5.3:1 against white.
+ */
+export const COLLABORATOR_PALETTE = [
+  {
+    name: "blue",
+    hue: 250,
+    oklch: "oklch(0.525 0.125 250)",
+    hex: "#266daf",
+    hexDark: "#5badfa",
+  },
+  {
+    name: "green",
+    hue: 145,
+    oklch: "oklch(0.505 0.155 145)",
+    hex: "#0a7a21",
+    hexDark: "#4acc65",
+  },
+  {
+    name: "red",
+    hue: 25,
+    oklch: "oklch(0.54 0.13 25)",
+    hex: "#ad4b47",
+    hexDark: "#ff8d88",
+  },
+  {
+    name: "purple",
+    hue: 300,
+    oklch: "oklch(0.54 0.15 300)",
+    hex: "#7d56b8",
+    hexDark: "#b98cfe",
+  },
+  {
+    name: "amber",
+    hue: 80,
+    oklch: "oklch(0.525 0.105 80)",
+    hex: "#8a620c",
+    hexDark: "#cb9c38",
+  },
+  {
+    name: "orange",
+    hue: 50,
+    oklch: "oklch(0.535 0.135 50)",
+    hex: "#a9510f",
+    hexDark: "#fb9548",
+  },
+  {
+    name: "lime",
+    hue: 115,
+    oklch: "oklch(0.52 0.115 115)",
+    hex: "#677008",
+    hexDark: "#9da72e",
+  },
+  {
+    name: "teal",
+    hue: 180,
+    oklch: "oklch(0.51 0.09 180)",
+    hex: "#0b7768",
+    hexDark: "#44c1b0",
+  },
+  {
+    name: "cyan",
+    hue: 210,
+    oklch: "oklch(0.515 0.085 210)",
+    hex: "#117482",
+    hexDark: "#48bccc",
+  },
+  {
+    name: "indigo",
+    hue: 275,
+    oklch: "oklch(0.53 0.135 275)",
+    hex: "#5662b9",
+    hexDark: "#8b99fe",
+  },
+  {
+    name: "magenta",
+    hue: 325,
+    oklch: "oklch(0.545 0.175 325)",
+    hex: "#a043a7",
+    hexDark: "#f387fb",
+  },
+  {
+    name: "pink",
+    hue: 350,
+    oklch: "oklch(0.545 0.145 350)",
+    hex: "#ab467c",
+    hexDark: "#fd87c6",
+  },
+] as const;
+
+export type CollaboratorPaletteEntry = typeof COLLABORATOR_PALETTE[number];
+
+/**
+ * Stable, uniformly-distributed index for an id. The id itself is often not
+ * uniformly distributed, hence the hash.
+ */
+export const getCollaboratorPaletteIndex = (id: string): number => {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % COLLABORATOR_PALETTE.length;
+};
+
+export const getCollaboratorPaletteEntry = (
+  id: string,
+): CollaboratorPaletteEntry =>
+  COLLABORATOR_PALETTE[getCollaboratorPaletteIndex(id)];

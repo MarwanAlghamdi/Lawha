@@ -1,0 +1,184 @@
+// The sign-in / sign-up card.
+
+.lw-auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+  max-width: 396px;
+  box-sizing: border-box;
+  padding: 30px 30px 26px;
+  background: var(--lw-surface-95, var(--lw-surface));
+  backdrop-filter: blur(6px);
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-modal);
+  box-shadow: 0 26px 50px -34px rgba(28, 26, 23, 0.6);
+}
+
+// The brand lockup + theme toggle, as the card's own first row. The mockup
+// puts these inside the card rather than in a page-wide bar above it — there
+// is no back affordance or caption on this screen, so a separate header row
+// would be an empty bar wasting vertical space above an otherwise centred
+// card.
+.lw-auth-card__header {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.lw-auth-card__header-spacer {
+  flex: 1;
+  min-width: 6px;
+}
+
+// Compound selector on purpose — see the specificity note on
+// `.lw-home__sort` in LawhaHome.scss. `.lw-btn` sets a fixed height via the
+// `lw-control` mixin; a single class here would only tie with it.
+.lw-auth-card__header .lw-theme-toggle {
+  height: var(--lw-h-compact);
+  min-height: var(--lw-h-compact);
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+
+.lw-auth-card__intro {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+
+  h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+
+  p {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+}
+
+.lw-auth-card__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+/**
+ * The "this is the master password" opt-in.
+ *
+ * `align-items: flex-start` rather than `center`: the hint beside the box wraps
+ * to two or three lines once it interpolates a username, and a centred checkbox
+ * then floats halfway down a paragraph with nothing to point at. Aligning to
+ * the start keeps it on the first line, which is the line that reads as the
+ * label.
+ *
+ * `inline-flex`, so the hit area is the label and not the full card width —
+ * this is a consequential credential and a stray click on empty space three
+ * inches away should not arm it.
+ */
+.lw-auth-card__master {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.lw-auth-card__error {
+  margin: 0;
+  padding: 10px 12px;
+  border: var(--lw-border-width) solid var(--lw-danger-b);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-danger-bg);
+  color: var(--lw-danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lw-auth-card__submit {
+  justify-content: center;
+  width: 100%;
+  height: var(--lw-h-xl);
+  border-radius: var(--lw-r-lg);
+  font-size: 14.5px;
+}
+
+.lw-auth-card__rule {
+  height: 1px;
+  background: var(--lw-border3);
+}
+
+.lw-auth-card__alt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+
+  // Wraps rather than crushing the button on a narrow phone.
+  @media (max-width: 380px) {
+    flex-direction: column;
+    align-items: stretch;
+
+    .lw-btn {
+      justify-content: center;
+    }
+  }
+}
+
+.lw-auth-card__note {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--lw-muted2);
+}
+
+// A text-weight action inside the card — "Forgot your password?". Not a
+// `.lw-btn`: it sits under the primary action and a second bordered control
+// there would compete with it.
+.lw-auth-card__link {
+  align-self: center;
+  border: none;
+  background: none;
+  padding: 4px;
+  margin: -4px 0;
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  color: var(--lw-text3);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+
+  &:hover {
+    color: var(--lw-accent);
+  }
+}
+
+/**
+ * The escrow unlock control, wherever it is dropped.
+ *
+ * Owns only its internal rhythm; the host card supplies the surrounding spacing
+ * by passing its own class in. That keeps it usable on the locked-board screen
+ * and on the dashboard without either one having to fight a margin it did not
+ * ask for.
+ */
+.lw-escrow-unlock {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.lw-auth-card code {
+  font-family: var(--lw-font-mono);
+  font-size: 0.92em;
+  background: var(--lw-sunken);
+  border-radius: var(--lw-r-xs);
+  padding: 1px 4px;
+  overflow-wrap: anywhere;
+}

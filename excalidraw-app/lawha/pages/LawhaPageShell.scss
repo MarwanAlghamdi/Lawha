@@ -1,0 +1,96 @@
+// Chrome for the screens that are not the canvas: sign in, sign up, account.
+//
+// These live outside `.excalidraw`, so they resolve their tokens from the
+// `:root` / `body[data-lw-theme]` copy of the palette. That duplication is the
+// whole reason lawha-tokens.scss emits the palettes twice.
+
+.lw-page {
+  position: relative;
+  height: 100vh;
+  // Not 100vh: mobile browsers report a viewport that excludes the collapsing
+  // toolbar, so a 100vh page is scrollable by exactly the toolbar's height.
+  height: 100dvh;
+  box-sizing: border-box;
+  background: var(--lw-bg);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.lw-page__backdrop {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--lw-dot) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+// A fixed-height, self-scrolling column rather than `min-height` + page
+// scroll: `html`/`body` ship `overflow: hidden` (set for the canvas route,
+// which never scrolls) and that rule is global, not scoped per-route. Without
+// its own scroll container, content taller than the viewport — the account
+// page's stack of cards, most reliably — has no scrollbar anywhere and the
+// bottom of it, sign-out and delete-account included, is simply unreachable.
+.lw-page__body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: 100vh;
+  height: 100dvh;
+  box-sizing: border-box;
+  padding: 20px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.lw-page__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lw-page__caption {
+  font-family: var(--lw-font-mono);
+  font-size: 11px;
+  color: var(--lw-muted);
+
+  // On a phone the caption is what pushes the theme toggle onto a second row,
+  // where it sits alone and right-aligned. It is a footnote, so it goes first.
+  @media (max-width: 599px) {
+    display: none;
+  }
+}
+
+.lw-page__spacer {
+  flex: 1;
+  min-width: 6px;
+}
+
+.lw-page__main {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.lw-page--card .lw-page__main {
+  align-items: center;
+  justify-content: center;
+  // Pulls the card up off dead-centre; centred-in-the-viewport reads as low
+  // once the header row is above it.
+  padding-bottom: 6vh;
+}
+
+.lw-page--page .lw-page__main {
+  flex-direction: column;
+  align-items: center;
+}
+
+// Held while the session resolves. Occupies the viewport so the page does not
+// collapse and reflow when the real content lands.
+.lw-route-pending {
+  min-height: 100dvh;
+  background: var(--lw-bg);
+}

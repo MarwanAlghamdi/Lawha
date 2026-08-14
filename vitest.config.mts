@@ -82,6 +82,25 @@ export default defineConfig({
     setupFiles: ["./setupTests.ts"],
     globals: true,
     environment: "jsdom",
+    // Playwright owns `e2e/`. Without this vitest collects those specs too and
+    // they fail on `test.beforeEach()` — one red suite that has nothing to do
+    // with the code under test.
+    //
+    // `lawha-server/scripts/` is excluded for the same reason, one runner
+    // further along: `backup.test.mjs` and `restore.test.mjs` are written
+    // against node's own `node:test` runner (they drive CLI processes and a
+    // real sqlite file, so there is nothing for jsdom to do), and `yarn
+    // test:server` runs them with `node --test`. Vitest's default include glob
+    // matches `*.test.mjs`, collects them, finds no vitest suite inside and
+    // reports "No test suite found in file" — two red suites in `yarn test:app`
+    // for tests that are green in the runner that owns them.
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "e2e/**",
+      "lawha-server/scripts/**",
+    ],
     // don't list skipped tests in the failure tree — keeps output readable
     hideSkippedTests: true,
     coverage: {

@@ -1,0 +1,38 @@
+{
+  "name": "lawha-server",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Lawha self-hosted collaboration server: socket relay + REST + SQLite",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-migrations.mjs",
+    "start": "node dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test scripts/*.test.mjs",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "migrate": "tsx src/cli/migrate.ts",
+    "reset-password": "tsx src/cli/reset-password.ts",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "encrypt-db": "node scripts/encrypt-db.mjs"
+  },
+  "dependencies": {
+    "@node-rs/argon2": "2.0.2",
+    "better-sqlite3": "11.5.0",
+    "better-sqlite3-multiple-ciphers": "12.11.1",
+    "express": "4.21.2",
+    "socket.io": "4.7.2",
+    "tar": "7.5.22",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.11",
+    "@types/express": "4.17.21",
+    "@types/node": "22.10.2",
+    "tsx": "4.19.2",
+    "typescript": "5.9.3"
+  }
+}

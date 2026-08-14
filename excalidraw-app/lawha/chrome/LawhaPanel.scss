@@ -1,0 +1,28 @@
+// Shared geometry for panels that are a popover on desktop and a sheet on a
+// phone. The surfaces themselves (lw-share, lw-ai) style their own contents.
+
+.excalidraw {
+  // Applied to `.lw-share--sheet` / `.lw-ai--sheet`. Positioned against the
+  // viewport, which only works because the sheet is rendered directly into the
+  // editor container rather than inside Radix's transformed popper wrapper —
+  // a transformed ancestor would become the containing block and collapse this
+  // to a few pixels wide, off-screen.
+  //
+  // Written as compound selectors so they outrank `.excalidraw .lw-share` /
+  // `.excalidraw .lw-ai`, which set the popover's fixed 330px width. Equal
+  // specificity would leave the winner decided by stylesheet order, and the
+  // sheet would inherit the popover's width.
+  .lw-share.lw-share--sheet,
+  .lw-ai.lw-ai--sheet {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    box-sizing: border-box;
+    border-radius: var(--lw-r-modal) var(--lw-r-modal) 0 0;
+    padding: 20px 16px calc(20px + var(--sab, 0px));
+    box-shadow: var(--lw-shadow-modal);
+    z-index: var(--zIndex-ui-library);
+  }
+}

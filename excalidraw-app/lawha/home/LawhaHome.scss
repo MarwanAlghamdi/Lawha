@@ -1,0 +1,2052 @@
+// The board dashboard.
+//
+// Laid out from the Home mockup: one wrapping bar island, a heading row with
+// the filters pushed to its far end, an optional tag row, then the grid.
+
+.lw-home {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  box-sizing: border-box;
+  min-height: 100vh;
+  // The bottom padding clears the floating selection bar. It is generous on
+  // purpose: without it the last row of cards sits under the bar exactly when
+  // the bar is on screen, which is exactly when you are trying to check the
+  // selection against those cards.
+  padding: 20px 30px 150px;
+  background: var(--lw-bg);
+  // Set here rather than relied on from a parent: this route deliberately does
+  // not sit inside LawhaPageShell, so it inherits the document's default serif
+  // unless it says otherwise.
+  font-family: var(--lw-font-sans);
+  color: var(--lw-text);
+}
+
+// ---------------------------------------------------------------------------
+// Dragging
+// ---------------------------------------------------------------------------
+// Set on `<body>` for the duration of a drag, by `useBoardDrag`.
+//
+// `touch-action: none` is the half that matters: without it a finger dragging a
+// board also scrolls the page, and the browser resolves that by firing
+// `pointercancel` and taking the drag with it. It is scoped to the drag rather
+// than left on the cards, because a card the page cannot be scrolled from is a
+// dead zone the width of the grid.
+//
+// `user-select` because a mouse drag across a card otherwise paints the board
+// name blue, and cursor because the pointer is holding something everywhere,
+// not only over a target.
+body.lw-dragging {
+  touch-action: none;
+  user-select: none;
+  cursor: grabbing;
+}
+
+// The thing under the pointer. Always mounted — see the note at its call site —
+// and taken out of the flow so it cannot affect anything it passes over.
+//
+// `pointer-events: none` is load-bearing: hit-testing is `elementFromPoint`, and
+// a ghost pinned under the cursor would be the only thing it ever found.
+.lw-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  margin: 10px 0 0 14px;
+  padding: 7px 11px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-surface-96);
+  box-shadow: var(--lw-shadow-island);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--lw-text);
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.lw-drag-ghost--on {
+  opacity: 1;
+  visibility: visible;
+}
+
+.lw-drag-ghost__label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+// ---------------------------------------------------------------------------
+// The bar
+// ---------------------------------------------------------------------------
+.lw-home__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 11px 14px 11px 16px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: 14px;
+  background: var(--lw-surface-90);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--lw-shadow-bar);
+}
+
+// Pushes everything after the logo to the right, the way the mockup does.
+.lw-home__bar-spacer {
+  flex: 1;
+  min-width: 20px;
+}
+
+.lw-home__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 200px;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.lw-home__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: var(--lw-h-md);
+  padding: 0 30px 0 13px;
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: 9px;
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 13px;
+  outline: none;
+
+  &::placeholder {
+    color: var(--lw-muted2);
+  }
+
+  &:focus {
+    border-color: var(--lw-accent);
+  }
+}
+
+// The `/` shortcut hint. Focuses the field — see LawhaHomeBar.
+.lw-home__search-key {
+  position: absolute;
+  right: 11px;
+  padding: 2px 5px;
+  border: 1px solid var(--lw-border2);
+  border-radius: 5px;
+  background: var(--lw-sunken);
+  color: var(--lw-muted3);
+  font-family: var(--lw-font-mono);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.lw-home__live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-text2);
+}
+
+.lw-home__transfer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .lw-btn {
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
+
+.lw-home__account {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: var(--lw-h-md);
+  padding: 0 12px 0 5px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: 22px;
+  background: var(--lw-input);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lw-accent);
+  }
+}
+
+.lw-home__avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--lw-presence-0);
+  color: #fff;
+  font-family: var(--lw-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lw-home__account-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.lw-home__account-name {
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-home__account-role {
+  font-family: var(--lw-font-mono);
+  font-size: 9.5px;
+  color: var(--lw-muted);
+}
+
+.lw-home__signout {
+  height: var(--lw-h-md);
+  padding: 0 8px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--lw-muted);
+  font-family: var(--lw-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-accent);
+  }
+}
+
+.lw-home__new {
+  gap: 8px;
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------
+// The path, which is also the heading
+// ---------------------------------------------------------------------------
+// There used to be a breadcrumb strip of its own above the body and a plain
+// heading below it. Two rows saying the same thing, above a sidebar row that
+// said it a third time. The ancestors are inline in the heading now, sized down
+// so the folder you are actually in stays the thing your eye lands on.
+.lw-home__crumb {
+  padding: 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--lw-r-sm);
+  background: transparent;
+  color: var(--lw-text3);
+  font-family: var(--lw-font-mono);
+  font-size: 0.62em;
+  font-weight: 500;
+  letter-spacing: 0;
+  vertical-align: middle;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-accent);
+  }
+}
+
+.lw-home__crumb--current {
+  color: var(--lw-text);
+}
+
+.lw-home__crumb--over {
+  border-color: var(--lw-accent);
+  background: var(--lw-accent-soft-h);
+  color: var(--lw-accent);
+}
+
+.lw-home__crumb-sep {
+  margin: 0 1px;
+  color: var(--lw-muted3);
+  font-family: var(--lw-font-mono);
+  font-size: 0.62em;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+// ---------------------------------------------------------------------------
+// Body: the sticky folder tree beside the boards
+// ---------------------------------------------------------------------------
+.lw-home__body {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.lw-home__main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+// Sticky, so sort, the view toggle and Select-all stay reachable partway down
+// a long grid. A selection is usually built while scrolling, and controls that
+// scroll away with the filters are controls you have to scroll back for.
+//
+// An island rather than a bare strip, matching `.lw-home__bar` above it: it is
+// opaque because cards scroll underneath, and an opaque rectangle with square
+// corners butting into a grid of rounded cards reads as a rendering fault
+// rather than as a surface. Same radius, border and shadow as the bar, so the
+// page has two of one thing instead of one of two.
+.lw-home__toolbar {
+  position: sticky;
+  top: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: 14px;
+  background: var(--lw-surface-90);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--lw-shadow-bar);
+}
+
+.lw-home__heading {
+  margin: 0;
+  font-family: var(--lw-font-sans);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.024em;
+  color: var(--lw-text);
+}
+
+.lw-home__subtitle {
+  margin: -4px 0 0;
+  padding: 0 3px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+  text-wrap: pretty;
+}
+
+.lw-home__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+// Tiles / Details. Same sunken tray as the visibility segments below it,
+// because they are the same kind of control and a second silhouette for the
+// same idea makes the row read as two unrelated things.
+.lw-home__views {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--lw-border2);
+  border-radius: 9px;
+  background: var(--lw-sunken);
+}
+
+.lw-home__view {
+  border: none;
+  border-radius: var(--lw-r-sm);
+  padding: 0 11px;
+  height: 32px;
+  background: transparent;
+  color: var(--lw-text3);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+.lw-home__view--on {
+  background: var(--lw-surface);
+  color: var(--lw-text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.09);
+}
+
+// Segmented control: a sunken tray with the active segment raised out of it.
+.lw-home__segmented {
+  display: inline-flex;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--lw-border2);
+  border-radius: 9px;
+  background: var(--lw-sunken);
+}
+
+.lw-home__segment {
+  border: none;
+  border-radius: 6px;
+  padding: 9px 13px;
+  background: transparent;
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--lw-text3);
+  text-transform: capitalize;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+.lw-home__segment--on {
+  background: var(--lw-surface);
+  color: var(--lw-text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.09);
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+// Compound selector on purpose. `.lw-select` sets `width: 100%`, and a
+// single-class rule only ties with it — the winner would then depend on import
+// order, which is what pushed the sort control onto a row of its own.
+.lw-select.lw-home__sort {
+  width: auto;
+  flex: 0 0 auto;
+  height: var(--lw-h-md);
+  min-height: var(--lw-h-md);
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+// Sized down to sit beside the segments rather than tower over them; the 44px
+// floor is for the touch targets the mockup treats as primary, and this one is
+// a filter-row control like the sort.
+.lw-btn.lw-home__select-all {
+  height: var(--lw-h-sm);
+  min-height: var(--lw-h-sm);
+  padding: 0 12px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+// ---------------------------------------------------------------------------
+// Folder tree
+//
+// A sticky column rather than a row of chips: folders nest now, and a chip
+// cannot show depth. Filing is per person — two people can both have a "sprint"
+// folder and they are different rows — so every count here is this account's
+// boards and nobody else's.
+// ---------------------------------------------------------------------------
+.lw-home__sidebar {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lw-home__sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 40px;
+  padding: 0 3px;
+}
+
+.lw-home__sidebar-label {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--lw-muted2);
+}
+
+.lw-home__folders {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-card);
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-card);
+}
+
+.lw-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  border: var(--lw-border-width) solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--lw-text2);
+  font-family: var(--lw-font-sans);
+  text-align: start;
+  cursor: pointer;
+  // Deliberately none: a folder row is a drop target, and a transition on the
+  // highlight makes a drag over four rows look like it landed on the wrong one.
+  transition: none;
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+.lw-folder-row--on {
+  background: var(--lw-sunken);
+  color: var(--lw-text);
+}
+
+// The drop affordance. A border and a wash, never motion alone —
+// `prefers-reduced-motion` zeroes every `lw-` animation, and an affordance
+// expressed only as movement disappears entirely for those users.
+.lw-folder-row--over {
+  border-color: var(--lw-accent);
+  background: var(--lw-accent-soft-h);
+  color: var(--lw-text);
+  box-shadow: 0 0 0 3px var(--lw-accent-soft-h);
+}
+
+.lw-folder-row--held {
+  opacity: 0.45;
+}
+
+// Only the row container drags; the caret and the name are real buttons and
+// keep the pointer cursor their behaviour promises.
+div.lw-folder-row {
+  cursor: grab;
+}
+
+.lw-folder-row__caret {
+  flex: none;
+  width: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--lw-muted2);
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.lw-folder-row__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.lw-folder-row__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lw-folder-row__select {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lw-folder-row__count {
+  flex: none;
+  font-family: var(--lw-font-mono);
+  font-size: 11px;
+  color: var(--lw-muted);
+}
+
+// Only visible while a folder is being dragged: it is the one gesture for
+// "take this back out to the top level", and there is no menu equivalent.
+.lw-home__folder-root-drop {
+  height: 0;
+  overflow: hidden;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  color: var(--lw-muted2);
+  text-align: center;
+}
+
+.lw-home__folder-root-drop--armed {
+  height: auto;
+  padding: 10px 6px;
+  border: var(--lw-border-width) dashed var(--lw-border-dash);
+  border-radius: 9px;
+}
+
+.lw-home__folder-root-drop--over {
+  border-color: var(--lw-accent);
+  border-style: solid;
+  background: var(--lw-accent-soft-h);
+  color: var(--lw-accent);
+}
+
+.lw-home__folder-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 11px;
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: var(--lw-r-lg);
+  background: var(--lw-surface-90);
+}
+
+.lw-home__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.lw-home__swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: var(--lw-border-width) solid transparent;
+  border-radius: var(--lw-r-sm);
+  cursor: pointer;
+}
+
+.lw-home__swatch--none {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--lw-sunken),
+    var(--lw-sunken) 3px,
+    var(--lw-border2) 3px,
+    var(--lw-border2) 6px
+  );
+}
+
+.lw-home__swatch--on {
+  border-color: var(--lw-text);
+  box-shadow: 0 0 0 2px var(--lw-surface) inset;
+}
+
+.lw-home__folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  .lw-btn {
+    height: var(--lw-h-sm);
+    min-height: var(--lw-h-sm);
+    padding: 0 11px;
+    font-size: 12px;
+  }
+}
+
+// Dashed, like the new-board tile: the same "there is nothing here yet" idea.
+.lw-home__folder-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 11px;
+  border: var(--lw-border-width) dashed var(--lw-border-dash);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--lw-text3);
+  font-family: var(--lw-font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lw-accent);
+    color: var(--lw-accent);
+  }
+}
+
+// The create/rename field, standing exactly where its row does.
+.lw-home__folder-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: 8px;
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 13px;
+  outline: none;
+}
+
+.lw-home__folder-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 11px;
+  border: var(--lw-border-width) solid var(--lw-danger-b);
+  border-radius: var(--lw-r-lg);
+  background: var(--lw-danger-bg);
+
+  .lw-btn {
+    height: var(--lw-h-sm);
+    min-height: var(--lw-h-sm);
+    padding: 0 11px;
+    font-size: 12px;
+  }
+}
+
+.lw-home__folder-confirm-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--lw-danger);
+}
+
+// ---------------------------------------------------------------------------
+// Selection bar
+//
+// Floating, fixed to the bottom of the viewport, on the inverted surface. This
+// reverses an earlier decision — the bar used to sit in the flow between the
+// filters and the grid, on the grounds that a floating bar covers the very
+// cards you are checking your selection against. That is true, and it is worth
+// less than what it cost: a selection is usually built while scrolling a long
+// grid, and an in-flow bar scrolls away with the filters, so by the time the
+// last board is picked the controls are off screen. It covers about one row,
+// and `.lw-home` carries enough bottom padding to keep the last row clear of
+// it. ADR 0007.
+// ---------------------------------------------------------------------------
+.lw-selection-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  z-index: 40;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(920px, calc(100vw - 32px));
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--lw-r-card);
+  background: var(--lw-invert-bg);
+  color: var(--lw-invert-text);
+  box-shadow: 0 22px 48px -20px rgba(28, 26, 23, 0.7);
+  animation: lw-rise-in 180ms ease-out both;
+}
+
+.lw-selection-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.lw-selection-bar__second {
+  padding-top: 8px;
+  border-top: 1px solid var(--lw-bar-line);
+}
+
+.lw-selection-bar__count {
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lw-selection-bar__divider {
+  width: 1px;
+  height: 22px;
+  background: var(--lw-bar-line);
+}
+
+// Not decoration. While anything is selected a click on a card selects rather
+// than opens, and a click that means two things depending on state nobody can
+// see is a trap — so the state is named, in words, beside the count causing it.
+.lw-selection-bar__note {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--lw-bar-dim);
+  text-wrap: pretty;
+}
+
+.lw-selection-bar__label {
+  flex: 1 1 240px;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.lw-selection-bar__select,
+.lw-selection-bar__input {
+  height: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--lw-bar-fill-b);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-bar-fill);
+  color: var(--lw-invert-text);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  cursor: pointer;
+  outline: none;
+}
+
+.lw-selection-bar__input {
+  flex: 1 1 180px;
+  min-width: 0;
+  cursor: text;
+}
+
+// The options are rendered by the platform against the platform's own surface,
+// so they need the page's colours rather than the bar's inverted ones.
+.lw-selection-bar__select option {
+  background: var(--lw-surface);
+  color: var(--lw-text);
+}
+
+.lw-selection-bar__primary {
+  height: 38px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--lw-r-md);
+  background: var(--lw-invert-text);
+  color: var(--lw-invert-bg);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+}
+
+.lw-selection-bar__danger {
+  height: 38px;
+  padding: 0 13px;
+  border: 1px solid var(--lw-bar-danger-b);
+  border-radius: var(--lw-r-md);
+  background: transparent;
+  color: var(--lw-bar-danger);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--lw-bar-danger-bg);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+}
+
+.lw-selection-bar__quiet {
+  height: 38px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--lw-r-md);
+  background: transparent;
+  color: var(--lw-bar-dim);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-invert-text);
+  }
+}
+
+@keyframes lw-rise-in {
+  from {
+    transform: translate(-50%, 14px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+.lw-home__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+}
+
+.lw-home__tags-label {
+  padding-right: 4px;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lw-muted2);
+}
+
+.lw-home__tag {
+  border: 1px solid transparent;
+  padding: 6px 12px;
+  background: var(--lw-sunken);
+  color: var(--lw-text3);
+  cursor: pointer;
+}
+
+.lw-home__tag--on {
+  border-color: var(--lw-accent);
+  color: var(--lw-accent);
+}
+
+// ---------------------------------------------------------------------------
+// Import / export report
+//
+// An in-page panel rather than a dialog, native or otherwise. A bulk transfer
+// has a *list* of outcomes — this board went, that one could not be decrypted
+// here — and a modal that has to be dismissed before the grid can be checked
+// against it is the wrong shape for that. It stays until dismissed.
+// ---------------------------------------------------------------------------
+.lw-home__report {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px 16px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: 12px;
+  background: var(--lw-surface-90);
+  box-shadow: var(--lw-shadow-card);
+}
+
+.lw-home__report-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-home__report-close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--lw-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+.lw-home__report-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lw-home__report-item {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+
+  strong {
+    font-weight: 600;
+    color: var(--lw-text2);
+  }
+}
+
+// A board that did not transfer is not a footnote of one that did.
+.lw-home__report-item--skipped {
+  color: var(--lw-danger);
+
+  strong {
+    color: var(--lw-danger);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grid
+// ---------------------------------------------------------------------------
+.lw-home__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+  gap: 18px;
+}
+
+.lw-home__empty {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--lw-text3);
+}
+
+.lw-home__new-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  // Matches a card's height so the tile does not sit short at the end of a row.
+  min-height: 252px;
+  padding: 20px;
+  border: var(--lw-border-width) dashed var(--lw-border-dash);
+  border-radius: var(--lw-r-card);
+  background: var(--lw-surface-85);
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lw-accent);
+    background: var(--lw-surface-96);
+
+    .lw-home__new-tile-mark {
+      border-color: var(--lw-accent);
+      color: var(--lw-accent);
+    }
+  }
+}
+
+.lw-home__new-tile-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: var(--lw-border-width) solid var(--lw-border-dash);
+  border-radius: 11px;
+  font-size: 20px;
+  color: var(--lw-muted);
+}
+
+.lw-home__new-tile-label {
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--lw-text2);
+}
+
+.lw-home__new-tile-note {
+  font-family: var(--lw-font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--lw-muted2);
+}
+
+// ---------------------------------------------------------------------------
+// Board card
+// ---------------------------------------------------------------------------
+.lw-board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-card);
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-card);
+  overflow: hidden;
+  transition: border-color 120ms ease;
+  // A card is draggable everywhere except its own controls. `pan-y` keeps a
+  // vertical flick on a phone scrolling the grid — the drag itself begins on a
+  // hold, and `body.lw-dragging` takes over from there.
+  touch-action: pan-y;
+
+  &:hover {
+    border-color: var(--lw-accent);
+  }
+}
+
+// The whole card is grabbable, but only where nothing else has a job. The
+// existing `--held` rules further down handle what it looks like while it is.
+.lw-board-card__preview {
+  cursor: grab;
+}
+
+// The pick control, over the preview's corner.
+//
+// Always rendered and merely *faded*, never removed: a checkbox that exists
+// only on hover cannot be reached with a keyboard and does not exist for a
+// screen reader either. Opacity keeps it in the tab order and in the
+// accessibility tree, and the moment anything is selected the grid is in
+// selection mode and every one of them is shown unconditionally.
+.lw-board-card__pick {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 2;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--lw-accent);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.lw-board-card:hover .lw-board-card__pick,
+.lw-board-card__pick:focus-visible,
+.lw-board-card--selecting .lw-board-card__pick {
+  opacity: 1;
+}
+
+// One of the three places the mode is stated — the other two are the button's
+// own label and the "Open" that appears in the action row. A click target that
+// silently changes meaning is the trap this is here to close.
+.lw-board-card__pick-note {
+  position: absolute;
+  left: 38px;
+  top: 11px;
+  padding: 3px 8px;
+  border: 1px solid var(--lw-border2);
+  border-radius: 20px;
+  background: var(--lw-surface-94);
+  font-family: var(--lw-font-mono);
+  font-size: 9.5px;
+  color: var(--lw-text3);
+  pointer-events: none;
+}
+
+.lw-board-card--selected {
+  border-color: var(--lw-accent);
+  // An inset ring rather than an outer one: the card sits in a grid and an
+  // outward glow would overlap its neighbours' borders.
+  box-shadow: inset 0 0 0 2px var(--lw-accent-soft-h), var(--lw-shadow-card);
+}
+
+.lw-board-card__preview {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 162px;
+  padding: 0;
+  border: none;
+  border-bottom: var(--lw-border-width) solid var(--lw-border3);
+  background: var(--lw-input);
+  cursor: pointer;
+
+  &:disabled {
+    cursor: default;
+  }
+}
+
+.lw-board-card__grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--lw-dot2) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+// The decrypted scene, drawn as bounding boxes over the dotted plate.
+.lw-board-card__mini {
+  position: absolute;
+  inset: 0;
+}
+
+// Scene colours are stored once and mean different things in the two themes:
+// the editor inverts its whole canvas in dark mode, so a board drawn in
+// near-black shows as near-white there. This miniature is DOM, not canvas, so
+// it has to apply the same filter itself — `--theme-filter` from theme.scss.
+// Without it a dark-mode dashboard shows black shapes on a black plate.
+body[data-lw-theme="dark"] .lw-board-card__mini {
+  filter: invert(93%) hue-rotate(180deg);
+}
+
+.lw-board-card__shape {
+  position: absolute;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  box-sizing: border-box;
+  // A postage-stamp miniature of a busy board is otherwise a wall of colour.
+  opacity: 0.85;
+}
+
+// Lines and arrows have no interior, so a box would misrepresent them.
+.lw-board-card__shape--line {
+  border-width: 0;
+  border-top-width: 1.5px;
+  border-radius: 0;
+}
+
+// Overlaid on the preview, as in the mockup — the liveness belongs to the
+// board's picture, not to its name.
+.lw-board-card__live {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-radius: 20px;
+  background: rgba(28, 26, 23, 0.84);
+  color: var(--lw-invert-text);
+  font-family: var(--lw-font-mono);
+  font-size: 9.5px;
+}
+
+/**
+ * The preview plate's own box.
+ *
+ * It was introduced to give the locked note somewhere to sit, and that note is
+ * gone with the locked state (ADR 0012). The wrapper stays because the plate is
+ * still the positioning context for the live-editing badge, and collapsing it
+ * back into `.lw-board-card` would re-anchor that to the whole card.
+ */
+.lw-board-card__plate {
+  position: relative;
+}
+
+.lw-board-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 13px 14px 14px;
+}
+
+.lw-board-card__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lw-board-card__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Rename happens in place, where the title was.
+.lw-board-card__rename {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-sm);
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+}
+
+// The delete confirmation, in the card rather than over the window.
+.lw-board-card__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.lw-board-card__confirm-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--lw-danger);
+}
+
+.lw-board-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-muted);
+}
+
+.lw-board-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+
+  .lw-btn {
+    height: 34px;
+    min-height: 34px;
+    padding: 0 11px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+}
+
+// Pushes Delete away from the safe actions, so the destructive one is never
+// the button next to the one you meant.
+.lw-board-card__gap {
+  flex: 1;
+}
+
+// A card being dragged. Faded rather than hidden: the grid should still show
+// where it came from, so a drop that lands nowhere is visibly a no-op.
+.lw-board-card--held {
+  opacity: 0.45;
+}
+
+// Where a search result is filed. Replaces the shape count in that one case —
+// "found it" should not be followed by "…and where is it?".
+.lw-board-card__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// ---------------------------------------------------------------------------
+// Subfolder tiles
+// ---------------------------------------------------------------------------
+.lw-home__tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.lw-home__tiles-label {
+  padding: 0 3px;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--lw-muted2);
+}
+
+.lw-home__tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.lw-folder-tile {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 14px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: 12px;
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-island);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lw-accent);
+  }
+}
+
+.lw-folder-tile--over {
+  border-color: var(--lw-accent);
+  background: var(--lw-accent-soft-h);
+  box-shadow: 0 0 0 3px var(--lw-accent-soft-h);
+}
+
+// A folder drawn rather than an icon font: two boxes and an inset tab, in the
+// folder's own colour, so it inherits this product's 1.5px signature.
+.lw-folder-tile__glyph {
+  flex: none;
+  width: 30px;
+  height: 24px;
+  border: 2px solid var(--lw-muted3);
+  border-radius: 3px 7px 7px 7px;
+}
+
+.lw-folder-tile__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lw-folder-tile__name {
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--lw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lw-folder-tile__sub {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  color: var(--lw-muted);
+}
+
+// ---------------------------------------------------------------------------
+// Tag chips on a board
+//
+// One stored colour per tag, and the chip's wash derived from it with
+// `color-mix` rather than stored separately — so a single value works in both
+// themes instead of a fixed pale background glaring out of the dark one.
+// ---------------------------------------------------------------------------
+.lw-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lw-tag-row--compact {
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.lw-tag-chip {
+  padding: 3px 7px;
+  border-radius: var(--lw-r-xs);
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  color: var(--lw-stroke-purple);
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lw-tag-chip--none {
+  background: var(--lw-sunken);
+  color: var(--lw-muted2);
+}
+
+.lw-tag-chip--add {
+  border: 1px dashed var(--lw-border-dash);
+  background: transparent;
+  color: var(--lw-muted2);
+}
+
+// ---------------------------------------------------------------------------
+// Details view
+// ---------------------------------------------------------------------------
+.lw-board-list {
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-card);
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-card);
+  // Horizontal only: a vertical scroller here would trap the page's own scroll.
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.lw-board-list__head,
+.lw-board-row {
+  display: grid;
+  grid-template-columns:
+    30px minmax(120px, 2fr) minmax(92px, 1.2fr) minmax(96px, 1.3fr)
+    72px 88px minmax(150px, auto);
+  align-items: center;
+  gap: 10px;
+  min-width: 720px;
+  padding: 0 14px;
+}
+
+.lw-board-list__head {
+  height: 40px;
+  background: var(--lw-sunken);
+  border-bottom: var(--lw-border-width) solid var(--lw-border2);
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lw-muted2);
+  white-space: nowrap;
+}
+
+.lw-board-row {
+  min-height: 48px;
+  border-bottom: 1px solid var(--lw-border3);
+  // Same reasoning as the card: draggable, but a vertical flick still scrolls.
+  touch-action: pan-y;
+  cursor: grab;
+
+  &:last-child {
+    border-bottom: none;
+  }
+
+  &:hover {
+    background: var(--lw-sunken);
+  }
+}
+
+.lw-board-row--selected {
+  background: var(--lw-accent-soft-h);
+}
+
+.lw-board-row--held {
+  opacity: 0.45;
+}
+
+.lw-board-row__pick {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--lw-accent);
+  cursor: pointer;
+}
+
+.lw-board-row__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lw-board-row__name {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:disabled {
+    color: var(--lw-muted);
+    cursor: default;
+  }
+}
+
+.lw-board-row__rename {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-sm);
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  outline: none;
+}
+
+.lw-board-row__live {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  color: var(--lw-text3);
+}
+
+.lw-board-row__folder,
+.lw-board-row__shapes,
+.lw-board-row__age {
+  min-width: 0;
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Faded until the row is hovered or something inside it holds focus. Always in
+// the DOM, never conditionally rendered: something that exists only on hover
+// cannot be reached with a keyboard and does not exist for a screen reader.
+.lw-board-row .lw-board-card__actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.lw-board-row:hover .lw-board-card__actions,
+.lw-board-row:focus-within .lw-board-card__actions {
+  opacity: 1;
+}
+
+// ---------------------------------------------------------------------------
+// Modals
+//
+// Import, Export and Tags. Dashboard-only, and not native dialogs: a
+// `window.confirm` blocks the renderer until dismissed (invariant 19). See
+// LawhaModal.tsx and ADR 0007 for why the "no floating surfaces" rule stops
+// here and not on the canvas.
+// ---------------------------------------------------------------------------
+.lw-modal__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--lw-scrim);
+  backdrop-filter: blur(3px);
+}
+
+.lw-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 440px;
+  max-height: calc(100vh - 48px);
+  padding: 22px;
+  overflow-y: auto;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-modal);
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-modal);
+  outline: none;
+}
+
+.lw-modal--wide {
+  max-width: 560px;
+}
+
+.lw-modal__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lw-modal__title {
+  margin: 0;
+  font-family: var(--lw-font-sans);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--lw-text);
+}
+
+.lw-modal__description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+  text-wrap: pretty;
+}
+
+.lw-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+.lw-drop-zone {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  padding: 30px 18px;
+  border: var(--lw-border-width) dashed var(--lw-border-dash);
+  border-radius: 12px;
+  background: var(--lw-input);
+  text-align: center;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--lw-accent);
+  }
+}
+
+.lw-drop-zone--over {
+  border-color: var(--lw-accent);
+  background: var(--lw-accent-soft-h);
+}
+
+.lw-drop-zone__title {
+  font-family: var(--lw-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-drop-zone__hint {
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-muted);
+}
+
+.lw-import__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  max-height: 210px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lw-import__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: 9px;
+  background: var(--lw-input);
+}
+
+.lw-import__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lw-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lw-import__size {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  color: var(--lw-muted);
+}
+
+.lw-import__remove {
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--lw-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-danger);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+.lw-export__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.lw-export__item {
+  padding: 6px 11px;
+  border: 1px solid var(--lw-border2);
+  border-radius: var(--lw-r-pill);
+  background: var(--lw-sunken);
+  font-family: var(--lw-font-mono);
+  font-size: 11.5px;
+  color: var(--lw-text2);
+}
+
+// ---------------------------------------------------------------------------
+// Tags modal
+// ---------------------------------------------------------------------------
+.lw-tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.lw-tag-option {
+  padding: 8px 13px;
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: var(--lw-r-pill);
+  background: transparent;
+  color: var(--lw-stroke-purple);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lw-tag-option--on {
+  border-color: currentColor;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+}
+
+// Managing tags, rather than putting one on a board — a list of rows, each
+// with its own rename and delete. Shown only while the toggle above it is on,
+// because the common errand in this modal is "tag this board" and rows that
+// delete things are the wrong default for that.
+.lw-tag-manage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--lw-border3);
+}
+
+// Two lines, not one.
+//
+// The row held name, twelve swatches, Rename and Delete on a single flex line,
+// which squeezed the name to an ellipsis ("qa-tag-178…") and wrapped the
+// swatches into a ragged block between the two buttons — the name being edited
+// unreadable, on the row whose whole job is editing it. A grid puts the
+// identity and its actions on the first line and gives the palette the second,
+// where twelve swatches fit in one run at every width this modal has.
+.lw-tag-manage__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 8px;
+
+  // The input, when renaming, takes the room the name had — and spans, because
+  // a rename replaces the identity rather than sitting beside it.
+  .lw-field__input {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+}
+
+// Takes the free space so the two controls sit together at the end of the row
+// rather than drifting with the length of the name.
+// Rename and Delete, together at the end of the first line.
+.lw-tag-manage__actions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.lw-tag-manage__name {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--lw-text2);
+}
+
+.lw-tag-picker__new {
+  display: flex;
+  gap: 7px;
+  padding-top: 13px;
+  border-top: var(--lw-border-width) solid var(--lw-border3);
+
+  .lw-field__input {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Narrow screens
+// ---------------------------------------------------------------------------
+@media (max-width: 980px) {
+  // The tree stops being a column and becomes a band above the boards: at this
+  // width 268px of sidebar is a third of the page, and the grid it is meant to
+  // help you navigate stops fitting two cards across.
+  .lw-home__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lw-home__sidebar {
+    position: static;
+  }
+
+  .lw-home__folders {
+    max-height: 280px;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .lw-home {
+    padding: 14px 14px 170px;
+    gap: 18px;
+  }
+
+  .lw-home__bar {
+    gap: 8px 10px;
+  }
+
+  // At this width the bar is already two rows; the search taking a full one of
+  // its own is what keeps the rest on a single line.
+  .lw-home__search {
+    order: 1;
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .lw-home__heading {
+    font-size: 19px;
+  }
+
+  .lw-home__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lw-selection-bar {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    max-width: none;
+    transform: none;
+    animation: none;
+  }
+}
+
+// Where to send a bug, under the last row of boards.
+//
+// A note, not a control: mono at the smallest size in the scale, the same
+// register as `.lw-auth-card__note`, with generous space above so it reads as
+// the end of the page rather than as another row of the list. It scrolls with
+// the content on purpose — a fixed bar would spend permanent screen on
+// something almost nobody needs on any given visit.
+.lw-home__contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-top: 40px;
+  padding-top: 18px;
+  border-top: 1px solid var(--lw-border3);
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--lw-muted2);
+
+  strong {
+    color: var(--lw-text3);
+    font-weight: 600;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tag colours
+// ---------------------------------------------------------------------------
+// Swatches over COLLABORATOR_PALETTE, in the tag manage pane. The shape mirrors
+// the folder sidebar's picker rather than inventing a second one — a folder dot
+// and a tag chip are the same object at different scales, and two pickers would
+// drift.
+// The full width of the second line, so all thirteen options sit in one run
+// and the choice can be read at a glance rather than reconstructed from two
+// ragged rows.
+.lw-tag-manage__swatches {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.lw-tag-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  // A hairline on every swatch, so a pale one still reads as a disc against
+  // the surface rather than dissolving into it.
+  box-shadow: 0 0 0 1.5px var(--lw-border);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+
+  &:hover {
+    transform: scale(1.12);
+  }
+
+  // Same shape as the selected ring: this is a radiogroup, so arrowing through
+  // it MOVES the selection, and a different focus style would suggest it does
+  // not.
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--lw-bg), 0 0 0 4px var(--lw-accent);
+  }
+}
+
+// Two rings with the surface colour between them, rather than a tick drawn on
+// the swatch: an inked glyph has to clear contrast against twelve different
+// backgrounds, and no single ink does.
+.lw-tag-swatch--on {
+  box-shadow: 0 0 0 2px var(--lw-bg), 0 0 0 4px var(--lw-text);
+}
+
+// "No colour" is a real choice, not an absence, so it gets a swatch of its own
+// rather than being the state of having clicked nothing.
+.lw-tag-swatch--none {
+  background: var(--lw-sunken);
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-top: 1.5px solid var(--lw-muted3);
+    transform: rotate(-45deg);
+    transform-origin: center;
+  }
+}

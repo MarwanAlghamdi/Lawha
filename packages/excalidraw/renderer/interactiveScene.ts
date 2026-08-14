@@ -1857,9 +1857,13 @@ const _renderInteractiveScene = ({
           if (remoteClients) {
             selectionColors.push(
               ...remoteClients.map((socketId) => {
+                // Theme-aware: this draws onto the interactive canvas, which
+                // is colour-filtered in dark mode. The DOM avatar list and the
+                // SVG laser layer are not, so they keep the unfiltered hex.
                 const background = getClientColor(
                   socketId,
                   appState.collaborators.get(socketId),
+                  appState.theme,
                 );
                 return background;
               }),

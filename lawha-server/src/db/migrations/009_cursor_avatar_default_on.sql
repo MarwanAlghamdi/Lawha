@@ -1,0 +1,59 @@
+-- The picture on the cursor becomes the default, and initials become the fallback.
+--
+-- 005 added `avatar_on_cursor INTEGER NOT NULL DEFAULT 0` and argued the case
+-- for opt-in at some length. That argument is reversed here on the product
+-- owner's explicit instruction — "by default is the picture profile unless
+-- disabled, then users will have initials as the cursor" — and the reasoning is
+-- written down rather than left as a diff, because the comment 005 carries is
+-- the sort of thing a later reader would otherwise trust over the code.
+--
+-- Why the reversal is defensible, and where it is not:
+--
+--   * The flag has never been the only gate. `sharesAvatarOnCursor` in
+--     `socket/identity.ts` requires the flag AND a stored picture, so an account
+--     with no photograph still resolves to "no avatar" and still draws initials.
+--     Turning the default on gives those accounts exactly what they had.
+--   * The bytes are still gated. `GET /api/users/:id/avatar` checks this same
+--     column at the only door to the file (`http/routes/users.ts`), which is
+--     invariant 21 done properly, and nothing here weakens it. What the default
+--     changes is the answer, not the question.
+--   * The audience is bounded but it is NOT "board members only", and saying so
+--     would be a comfortable lie. That route is deliberately not session-gated:
+--     what protects it is that the URL needs a 16-byte account id, and ids are
+--     handed out with `lawha-identities` to every co-present peer — including a
+--     link guest with no account. So the honest statement is "anyone already in
+--     a room with you, or holding a working link to a board you are on". That is
+--     the same set of people who can already see your name and your cursor.
+--   * The alternative was a feature nobody finds. The toggle lives on the
+--     account page, below the fold, and was disabled outright until a picture
+--     had been uploaded — so the path to it was: upload a photograph for a
+--     reason nobody had yet, then discover a control that had been greyed out
+--     the last time you looked.
+--
+-- The uncomfortable half, stated plainly: this UPDATE cannot distinguish an
+-- account that never decided from one that decided against. Nothing on the row
+-- records which, and inventing a `decided_at` column now would only be able to
+-- guess. So somebody who deliberately opted out has their choice flipped by this
+-- migration. That is accepted because the setting is one click to restore on the
+-- account page, because the flag was unreachable in the UI for anyone without a
+-- picture (the checkbox was `disabled`), and because the alternative — backfill
+-- nobody — leaves every existing account, which on a self-hosted LAN deployment
+-- is every account there is, on the old default with no way to notice it moved.
+UPDATE users SET avatar_on_cursor = 1;
+
+-- The column's DEFAULT stays 0, and that is a choice rather than an oversight.
+--
+-- SQLite cannot ALTER a column's default; the only way to change one is the
+-- twelve-step table rebuild — create a new `users`, copy, drop, rename. `users`
+-- is referenced by ten tables with ON DELETE CASCADE, so that rebuild means
+-- dropping the parent of every cascade in the schema and trusting the rename to
+-- reattach them all, with `foreign_keys` on and real rows in flight. That is a
+-- genuine risk of data loss, and it would be taken on for a value no code path
+-- ever reads: `UsersRepository.create` is the only INSERT into `users` anywhere
+-- in `src/`, and it names `avatar_on_cursor` explicitly in its column list. The
+-- default is dead weight, not a fallback.
+--
+-- The cost of this choice is that the schema now reads as if the default were
+-- off. That is what this comment and the one in the repository are for, and the
+-- test in `cursorAvatar.test.ts` pins the behaviour at the boundary that matters
+-- — what a freshly registered account actually gets — rather than at the DDL.

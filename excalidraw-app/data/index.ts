@@ -24,6 +24,7 @@ import type {
 import type {
   AppState,
   BinaryFileData,
+  BinaryFileMetadata,
   BinaryFiles,
   SocketId,
 } from "@excalidraw/excalidraw/types";
@@ -31,12 +32,13 @@ import type { MakeBrand } from "@excalidraw/common/utility-types";
 
 import {
   DELETED_ELEMENT_TIMEOUT,
+  FILE_STORAGE_PREFIXES,
   FILE_UPLOAD_MAX_BYTES,
   ROOM_ID_BYTES,
 } from "../app_constants";
 
-import { encodeFilesForUpload } from "./FileManager";
-import { saveFilesToFirebase } from "./firebase";
+import { getCurrentBoardKey } from "./currentBoard";
+import { saveFilesToBackend } from "./storage";
 
 import type { WS_SUBTYPES } from "../app_constants";
 
@@ -65,7 +67,14 @@ export const getSyncableElements = (
 const BACKEND_V2_GET = import.meta.env.VITE_APP_BACKEND_V2_GET_URL;
 const BACKEND_V2_POST = import.meta.env.VITE_APP_BACKEND_V2_POST_URL;
 
-const generateRoomId = async () => {
+/**
+ * A fresh board id: 10 random bytes, hex.
+ *
+ * Exported because creating a board no longer mints a key to go with it.
+ * Callers used `generateCollaborationLinkData` for the id and threw the key
+ * away, which read as if the key still mattered — see ADR 0012.
+ */
+export const generateBoardId = async () => {
   const buffer = new Uint8Array(ROOM_ID_BYTES);
   window.crypto.getRandomValues(buffer);
   return bytesToHexString(buffer);
@@ -96,7 +105,19 @@ export type SocketUpdateDataSource = {
     type: WS_SUBTYPES.MOUSE_LOCATION;
     payload: {
       socketId: SocketId;
-      pointer: { x: number; y: number; tool: "pointer" | "laser" };
+      pointer: {
+        x: number;
+        y: number;
+        tool: "pointer" | "laser";
+        /**
+         * Palette *indices*, not colours. The interactive canvas is filtered
+         * in dark mode, so which of an entry's two hexes is correct depends on
+         * the receiver's theme, not the sender's — resolving here would paint
+         * every remote cursor wrong for anyone on the opposite theme.
+         */
+        colorIndex?: number | null;
+        laserColorIndex?: number | null;
+      };
       button: "down" | "up";
       selectedElementIds: AppState["selectedElementIds"];
       username: string;
@@ -128,25 +149,90 @@ export type SocketUpdateData =
     _brand: "socketUpdateData";
   };
 
+/** Legacy Excalidraw form. Still accepted so existing links keep working. */
 const RE_COLLAB_LINK = /^#room=([a-zA-Z0-9_-]+),([a-zA-Z0-9_-]+)$/;
 
-export const isCollaborationLink = (link: string) => {
-  const hash = new URL(link).hash;
-  return RE_COLLAB_LINK.test(hash);
-};
+/**
+ * Lawha board links: `/b/<boardId>`.
+ *
+ * The board id moves into the path because it is not a secret — access is
+ * enforced server-side by `resolveBoardPermission`, which is a stronger
+ * guarantee than "the id is unguessable".
+ *
+ * The `#key=` fragment is still PARSED and no longer MINTED. Boards are stored
+ * in the clear (ADR 0012), so a link needs to carry nothing but the id; but
+ * every link handed out before that change has a fragment on it, and a board
+ * stored before it still needs that key to be read the first time. Accepting
+ * what we no longer emit is the whole of the compatibility story.
+ */
+const RE_BOARD_PATH = /^\/b\/([a-zA-Z0-9_-]+)\/?$/;
+const RE_BOARD_KEY_HASH = /^#key=([a-zA-Z0-9_-]+)$/;
 
-export const getCollaborationLinkData = (link: string) => {
-  const hash = new URL(link).hash;
-  const match = hash.match(RE_COLLAB_LINK);
-  if (match && match[2].length !== 22) {
-    window.alert(t("alerts.invalidEncryptionKey"));
+/** AES-GCM 128-bit JWK `k`, base64url. */
+const ROOM_KEY_LENGTH = 22;
+
+/**
+ * Board ids are shown grouped (`8f3a-c19d`) but stored and transmitted flat.
+ * Grouping is presentation only, so dashes are stripped on the way in.
+ */
+const normalizeBoardId = (boardId: string) => boardId.replace(/-/g, "");
+
+/**
+ * Reads a board link, or returns null if it is not one.
+ *
+ * A pure function, deliberately. It used to `window.alert` when a `/b/<id>`
+ * path arrived without a key, and that single line hung the whole app: opening
+ * a board from the dashboard navigates to a clean `/b/<id>` — the key is
+ * already on the device, so putting it in the URL would be pointless — and a
+ * native alert blocks the renderer's main thread until it is dismissed. It
+ * read as a frozen tab, not as a dialog.
+ *
+ * So a missing fragment is not an error here. The key is looked up for the
+ * open board instead, and callers that have somewhere to put a message (the
+ * board route's "locked here" panel) report the genuine failure: no key
+ * anywhere, from the link or from this device.
+ */
+export const getBoardLinkData = (link: string) => {
+  const url = new URL(link);
+
+  const pathMatch = url.pathname.match(RE_BOARD_PATH);
+  if (pathMatch) {
+    const roomId = normalizeBoardId(pathMatch[1]);
+    const keyMatch = url.hash.match(RE_BOARD_KEY_HASH);
+    const roomKey =
+      keyMatch && keyMatch[1].length === ROOM_KEY_LENGTH
+        ? keyMatch[1]
+        : getCurrentBoardKey(roomId);
+
+    // **A missing key is no longer a missing link.** This returned null without
+    // one, which made `isCollaborationLink` false, which meant `/b/<id>` did
+    // not join its room — invariant 25, broken for every board created since
+    // scenes became plaintext, because those boards have no key to find. The
+    // room id is the link; the key is an optional legacy attachment to it.
+    return { roomId, roomKey };
+  }
+
+  const hashMatch = url.hash.match(RE_COLLAB_LINK);
+  if (!hashMatch || hashMatch[2].length !== ROOM_KEY_LENGTH) {
     return null;
   }
-  return match ? { roomId: match[1], roomKey: match[2] } : null;
+  return { roomId: hashMatch[1], roomKey: hashMatch[2] };
 };
 
+/**
+ * Derived from the parser rather than re-matching the URL, so the two cannot
+ * disagree — and they did: a `#key=` of the wrong length made this true while
+ * the parser returned null, which is the shape of every "collaborating with
+ * nothing" bug.
+ */
+export const isCollaborationLink = (link: string) =>
+  getBoardLinkData(link) !== null;
+
+/** Kept as an alias so existing call sites read unchanged. */
+export const getCollaborationLinkData = getBoardLinkData;
+
 export const generateCollaborationLinkData = async () => {
-  const roomId = await generateRoomId();
+  const roomId = await generateBoardId();
   const roomKey = await generateEncryptionKey();
 
   if (!roomKey) {
@@ -156,12 +242,27 @@ export const generateCollaborationLinkData = async () => {
   return { roomId, roomKey };
 };
 
-export const getCollaborationLink = (data: {
-  roomId: string;
-  roomKey: string;
-}) => {
-  return `${window.location.origin}${window.location.pathname}#room=${data.roomId},${data.roomKey}`;
+/**
+ * The link to a board — the id, and nothing else.
+ *
+ * The `#key=` fragment is gone from what we hand out. It was the board key,
+ * which the server never held; it holds every key now (ADR 0011) and the scene
+ * is not encrypted at all (ADR 0012), so a fragment would be decoration that
+ * makes a link harder to paste into a chat window.
+ *
+ * **What this costs, stated rather than assumed:** the board id is now the
+ * entire secret in a share link, and unlike a fragment a path IS sent to the
+ * server and lands in its access log. The id is 10 random bytes
+ * (`ROOM_ID_BYTES`) and `link_access` still has to be on for the link to open
+ * anything, so this is a narrower change than it looks — but it is a real one.
+ */
+export const getCollaborationLink = (data: { roomId: string }) => {
+  return `${window.location.origin}/b/${data.roomId}`;
 };
+
+/** Grouped for display only — never parsed back in this form. */
+export const formatBoardIdForDisplay = (boardId: string) =>
+  boardId.match(/.{1,4}/g)?.join("-") ?? boardId;
 
 /**
  * Decodes shareLink data using the legacy buffer format.
@@ -207,8 +308,7 @@ export const importFromBackend = async (
     const response = await fetch(`${BACKEND_V2_GET}${id}`);
 
     if (!response.ok) {
-      window.alert(t("alerts.importBackendFailed"));
-      return {};
+      throw new Error(t("alerts.importBackendFailed"));
     }
     const buffer = await response.arrayBuffer();
 
@@ -235,9 +335,14 @@ export const importFromBackend = async (
       return legacy_decodeFromBackend({ buffer, decryptionKey });
     }
   } catch (error: any) {
-    window.alert(t("alerts.importBackendFailed"));
+    // Reported to the caller rather than shown from here. This used to
+    // `window.alert`, which blocks the renderer's main thread (invariant 19)
+    // and — worse for a data path — swallowed the failure into an empty scene,
+    // so a link that could not be fetched looked like a link to a blank board.
     console.error(error);
-    return {};
+    throw error instanceof Error
+      ? error
+      : new Error(t("alerts.importBackendFailed"));
   }
 };
 
@@ -267,11 +372,55 @@ export const exportToBackend = async (
       }
     }
 
-    const filesToUpload = await encodeFilesForUpload({
-      files: filesMap,
-      encryptionKey,
-      maxBytes: FILE_UPLOAD_MAX_BYTES,
-    });
+    /*
+     * Encrypted here, and NOT through `encodeFilesForUpload`, which stopped
+     * encrypting under ADR 0012.
+     *
+     * That decision was about Lawha's own storage: the server already held a
+     * copy of every key, so the encryption bought nothing and cost the
+     * locked-board screen. **None of that reasoning reaches this function.**
+     * `BACKEND_V2_POST` is upstream Excalidraw's public service — a third
+     * party, on the internet, that has never held a key and must not start —
+     * and the fragment below is the only place the key exists. Uploading these
+     * bytes in the clear would be publishing somebody's drawing.
+     *
+     * The path is inert in production (`.env.production` blanks both URLs, and
+     * `ShareDialog` says so) but it is live in dev against
+     * json-dev.excalidraw.com, so this is a real upload and not a dead branch.
+     */
+    const filesToUpload = await Promise.all(
+      [...filesMap].map(async ([id, fileData]) => {
+        const buffer = new TextEncoder().encode(fileData.dataURL);
+
+        // The size guard `encodeFilesForUpload` used to apply on this path.
+        // Checked BEFORE the encode, as it was there: compressing and
+        // encrypting a file that is about to be rejected is work thrown away.
+        // Restoring it explicitly rather than letting it lapse — dropping it
+        // silently would have raised the effective ceiling on this route only,
+        // which is the kind of divergence nobody finds until an upload fails
+        // somewhere else for a reason that no longer matches.
+        if (buffer.byteLength > FILE_UPLOAD_MAX_BYTES) {
+          throw new Error(
+            t("errors.fileTooBig", {
+              maxSize: `${Math.trunc(FILE_UPLOAD_MAX_BYTES / 1024 / 1024)}MB`,
+            }),
+          );
+        }
+
+        return {
+          id,
+          buffer: await compressData<BinaryFileMetadata>(buffer, {
+            encryptionKey,
+            metadata: {
+              id,
+              mimeType: fileData.mimeType,
+              created: Date.now(),
+              lastRetrieved: Date.now(),
+            },
+          }),
+        };
+      }),
+    );
 
     const response = await fetch(BACKEND_V2_POST, {
       method: "POST",
@@ -285,8 +434,8 @@ export const exportToBackend = async (
       url.hash = `json=${json.id},${encryptionKey}`;
       const urlString = url.toString();
 
-      await saveFilesToFirebase({
-        prefix: `/files/shareLinks/${json.id}`,
+      await saveFilesToBackend({
+        prefix: `${FILE_STORAGE_PREFIXES.shareLinkFiles}/${json.id}`,
         files: filesToUpload,
       });
 

@@ -1,0 +1,640 @@
+// /admin — the gate in front of it, the page stack, and the read-only
+// "This server" card on it.
+//
+// Its own file rather than more rows in LawhaAccount.scss: that stylesheet
+// belongs to the account panel, which the canvas opens as a dialog on every
+// board. Keeping the admin page's rules out of it is what stops them from
+// being loaded on every screen in the app for the sake of one unlinked route.
+
+// ---------------------------------------------------------------------------
+// The gate (LawhaAdminGate)
+// ---------------------------------------------------------------------------
+// The card shell itself is `.lw-auth-card`, imported from lawha/auth. Only the
+// two things the sign-in card has no equivalent of live here.
+
+// The gate's own rhythm, now that its intro is a heading and nothing else.
+//
+// The explanatory paragraph under `<h1>Administration</h1>` was deleted — it
+// restated the heading and the form below it — and a 26px heading sitting one
+// 20px card-gap above a segmented control reads as a card that lost something
+// rather than one that never had it. So the heading takes back the space the
+// paragraph occupied.
+//
+// A COMPOUND selector, `.lw-auth-card.lw-admin-gate`, not `.lw-admin-gate`
+// alone. A single class would only tie with `.lw-auth-card__intro`'s own rule
+// and the winner would then depend on import order — the same trap invariant
+// 12 records for the sheet rules, in a different stylesheet.
+//
+// Scoped to this card on purpose: sign-in and sign-up still have a sentence
+// under their headings, and their spacing is correct as it is.
+.lw-auth-card.lw-admin-gate {
+  .lw-auth-card__intro {
+    // Only when the heading really is alone. `:only-child` means a session
+    // that adds a "Signed in as…" line below it falls back to the shared
+    // rhythm automatically, with no second rule to keep in step.
+    h1:only-child {
+      padding-bottom: 4px;
+    }
+  }
+}
+
+// "Signed in as a.smith." Sits inside `.lw-auth-card__intro`, which is a
+// column with its own gap, so this needs no margin of its own — and must not
+// have one, or it would double the gap the intro already sets.
+.lw-admin-gate__whoami {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+
+  strong {
+    color: var(--lw-text);
+    font-weight: 600;
+  }
+}
+
+// Which password the field below is holding. Deliberately the same sunken
+// tray with a raised active segment as `.lw-home__segmented` on the dashboard
+// — one segmented control in the product, not two that resemble each other.
+//
+// Declared here rather than lifted into lawha-primitives.scss because that is
+// a two-caller refactor of the dashboard's filter row, and doing it beside a
+// security change would put both in one commit. A shared `.lw-segmented` is
+// the right eventual home; this is a note, not a plan.
+//
+// `display: flex` rather than the dashboard's `inline-flex`: there the control
+// sits in a row of other controls, here it is a full-width band of the card,
+// and two segments floating left of a 396px card would read as unrelated to
+// the field they label.
+.lw-admin-gate__segmented {
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--lw-border2);
+  border-radius: var(--lw-r-input);
+  background: var(--lw-sunken);
+}
+
+.lw-admin-gate__segment {
+  flex: 1 1 0;
+  min-width: 0;
+  border: none;
+  border-radius: var(--lw-r-sm);
+  // The 44px touch floor, met by padding rather than a height: these wrap to
+  // two lines at 320px and a fixed height would clip the second one.
+  padding: 12px 10px;
+  background: transparent;
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--lw-text3);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+.lw-admin-gate__segment--on {
+  background: var(--lw-surface);
+  color: var(--lw-text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(28, 26, 23, 0.09);
+
+  &:hover {
+    color: var(--lw-text);
+  }
+}
+
+// The page's own column. `.lw-page--page .lw-page__main` centres its children
+// and sets no gap, so before this the banner and the card sat edge to edge and
+// each was as wide as its own longest line — two cards of different widths
+// stacked with nothing between them. A cap as well as a gap, because a
+// filesystem path on a wide monitor would otherwise set the card's width.
+.lw-admin-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+  min-width: 0;
+}
+
+.lw-server-config__list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.lw-server-config__row {
+  display: grid;
+  // A fixed label column so the values line up down the card; the labels are
+  // short and known, so this is measurable rather than guessed.
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: baseline;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--lw-border3);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
+  // The label column collapses on a phone rather than crushing a filesystem
+  // path into forty pixels of it.
+  @media (max-width: 520px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.lw-server-config__label {
+  margin: 0;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lw-muted2);
+}
+
+.lw-server-config__value {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  min-width: 0;
+}
+
+.lw-server-config__plain {
+  font-size: 13.5px;
+  color: var(--lw-text);
+}
+
+// Paths are typed back into a terminal, so they are mono and they wrap at any
+// character — a path that overflows its card silently is a path you cannot
+// copy correctly.
+.lw-server-config__path {
+  font-family: var(--lw-font-mono);
+  font-size: 12px;
+  color: var(--lw-text);
+  overflow-wrap: anywhere;
+}
+
+// -----------------------------------------------------------------------
+// Accounts — the rebuilt panel (ADR 0015)
+// -----------------------------------------------------------------------
+//
+// The account row is the page. The old card put a list at the top and a form
+// underneath, so acting on somebody meant selecting them, scrolling, and
+// trusting the form was still about the person you picked. Every action now
+// sits inside the row it acts on, which is why a row is a block rather than a
+// single flex line.
+
+.lw-admin__accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lw-admin-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-md);
+}
+
+// A turned-off account is dimmed rather than hidden or moved. It is still an
+// account, and an administrator looking for the person they stopped last
+// month should find them where they were.
+.lw-admin-row--off {
+  background: var(--lw-sunken);
+
+  .lw-admin-row__name {
+    color: var(--lw-muted);
+  }
+}
+
+.lw-admin-row__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lw-admin-row__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--lw-text);
+  overflow-wrap: anywhere;
+}
+
+.lw-admin-row__self {
+  font-weight: 400;
+  color: var(--lw-muted);
+}
+
+// Wrap rather than shrink: "Sign out everywhere" is the longest label and
+// squeezing it produces an ellipsis on the word that carries the meaning.
+.lw-admin-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+// Compound selector, matching the note on `.lw-auth-card__header
+// .lw-theme-toggle`: `.lw-btn` fixes a height through the `lw-control` mixin,
+// and a single class here would only tie with it.
+.lw-admin-row__actions .lw-btn,
+.lw-admin-row__confirm .lw-btn {
+  height: var(--lw-h-compact);
+  min-height: var(--lw-h-compact);
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+// Replaces the action buttons rather than sitting beside them, so the action
+// being confirmed cannot be clicked again while its own question is up.
+.lw-admin-row__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 11px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-sunken);
+}
+
+.lw-admin-row__confirm-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+}
+
+.lw-admin__create,
+.lw-admin__create-trigger {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--lw-border3);
+}
+
+.lw-admin__create-trigger {
+  flex-direction: row;
+}
+
+// -----------------------------------------------------------------------
+// The log
+// -----------------------------------------------------------------------
+
+.lw-admin-log__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lw-admin-log__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--lw-divider);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+}
+
+.lw-admin-log__what {
+  font-size: 13px;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+}
+
+.lw-admin-log__meta {
+  font-size: 11px;
+  color: var(--lw-muted2);
+}
+
+// Shown only once the list is long enough to need it. A search box above three
+// accounts is furniture.
+.lw-admin__filter {
+  margin-bottom: 2px;
+}
+
+// ── The reset code, handed over once ────────────────────────────────────────
+//
+// Its own block rather than a second user of `.lw-admin__generated`, which the
+// created-account reveal still owns. That one is a short token centred in a
+// letter-spaced monospace field because its whole life is being read down a
+// phone; this is a ~70-character URL, and those same rules would centre it,
+// space it out, and scroll two thirds of it out of sight. Same panel shape,
+// different field, and the field is the reason they are two rules.
+//
+// Accent border rather than the ordinary one: this is the only thing on the
+// page holding a live credential, and it has to be findable after the
+// administrator has scrolled the list.
+.lw-admin__reset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: var(--lw-border-width) solid var(--lw-accent);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-sunken);
+}
+
+.lw-admin__reset-link {
+  width: 100%;
+  padding: 9px 11px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-surface);
+  color: var(--lw-text);
+  font-family: var(--lw-font-mono);
+  // Small enough that the whole link fits without scrolling in the panel
+  // width, which is what makes "click, Ctrl+C" a reliable fallback on the
+  // plain-http browsers that have no clipboard at all (ADR 0018).
+  font-size: 12.5px;
+}
+
+// `ShareTargets` on a page that is not the editor.
+//
+// The reset panel renders the same component the share popover does, because
+// "which of this deployment's addresses should this link use" is one question
+// and answering it twice is how the two panels came to disagree in the first
+// place. Its own rules, though, are unreachable from here: every one of them
+// is written as `.excalidraw .lw-share…` in LawhaSharePopover.scss, and
+// deliberately so — the phone sheet's geometry is a compound selector that has
+// to keep outranking them (invariant 12). `/admin` is a page, not a surface
+// inside the editor, so nothing under `.excalidraw` matches and the rows would
+// arrive as a bare stack of unspaced inputs.
+//
+// So: layout only, scoped to this panel, and nothing that duplicates a
+// *decision*. The colours, the dot, the label weights and the dead-tunnel
+// block all come from `--lw-*` tokens and the global `.lw-btn` / `.lw-input` /
+// `.lw-dot` primitives, which both copies already share. What is written twice
+// is flex direction and gap, which is the smallest thing that could be.
+.lw-admin__reset {
+  .lw-share__routes,
+  .lw-share__route,
+  .lw-share__routes-more {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lw-share__route-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .lw-share__route-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lw-text);
+  }
+
+  .lw-share__route-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    font-family: var(--lw-font-mono);
+    font-size: 11px;
+    white-space: nowrap;
+
+    .lw-dot {
+      background: currentColor;
+    }
+  }
+
+  .lw-share__route-status--checking,
+  .lw-share__route-status--here {
+    color: var(--lw-muted);
+  }
+
+  .lw-share__route-status--up {
+    color: var(--lw-accent);
+  }
+
+  .lw-share__route-status--down {
+    color: var(--lw-danger);
+  }
+
+  .lw-share__route-hint,
+  .lw-share__route-dead,
+  .lw-share__note {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+
+  .lw-share__route-dead {
+    color: var(--lw-danger);
+  }
+
+  .lw-share__url-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .lw-share__url {
+    flex: 1;
+    min-width: 0;
+    // Matches `.lw-admin__reset-link` above rather than the popover's 11.5px:
+    // this is the same ~70-character URL in the same panel, and two link
+    // fields on one card rendering at different sizes reads as two different
+    // kinds of thing.
+    font-size: 12.5px;
+  }
+
+  .lw-share__routes-more > summary {
+    font-size: 12px;
+    color: var(--lw-muted);
+    cursor: pointer;
+  }
+}
+
+.lw-admin__reset-fact {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+
+  strong {
+    color: var(--lw-text);
+    font-weight: 600;
+  }
+}
+
+// The one line on this panel that is about a person rather than about a
+// string: somebody's session ended a second ago and they do not know why. It
+// is coloured for the same reason `.lw-backup__state[data-status="failed"]` is
+// — a fact that is bad everywhere, printed in the same grey as everything
+// else, is how silence becomes the bug.
+.lw-admin__reset-fact--locked {
+  color: var(--lw-danger);
+
+  strong {
+    color: var(--lw-danger);
+  }
+}
+
+// ── Backups ──────────────────────────────────────────────────────────────────
+//
+// Reuses the card, section, field and button primitives above; only the parts
+// with no equivalent elsewhere are declared here.
+
+.lw-backup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lw-backup__status {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lw-backup__schedule {
+  font-size: 13px;
+  color: var(--lw-text2);
+}
+
+// The scheduler's own verdict, and the one line on this card worth colouring.
+// Everything on the deployment card above is a setting whose "on" is good in
+// some deployments and bad in others, so it stays neutral — but "the last
+// backup failed" is bad everywhere, and a card that reports it in the same
+// grey as everything else is how silence becomes the bug.
+.lw-backup__state {
+  font-size: 13px;
+  color: var(--lw-text2);
+
+  &[data-status="failed"] {
+    color: var(--lw-danger);
+    font-weight: 600;
+  }
+
+  &[data-status="disabled"] {
+    color: var(--lw-muted2);
+  }
+}
+
+// The scheduler is past its own deadline. Coloured for exactly the reason
+// `[data-status="failed"]` above is, and it sits directly above that line
+// rather than replacing it: the last completed cycle's verdict is still true
+// and still worth reading, it is just no longer a statement about now.
+.lw-backup__stale {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lw-danger);
+  text-wrap: pretty;
+
+  strong {
+    color: var(--lw-danger);
+    font-weight: 600;
+  }
+}
+
+.lw-backup__notice {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lw-text2);
+}
+
+.lw-backup__archive {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lw-backup__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--lw-divider);
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+}
+
+.lw-backup__entry-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+// Mono, because this is a filename an operator may have to type at a restore
+// prompt — the same reason the two filesystem paths on the deployment card are.
+.lw-backup__entry-name {
+  font-family: var(--lw-font-mono);
+  font-size: 12px;
+  color: var(--lw-text);
+  overflow-wrap: anywhere;
+}
+
+.lw-backup__entry-meta {
+  font-size: 11px;
+  color: var(--lw-muted2);
+}
+
+// A file someone cannot open, with no explanation, is worse than the finding
+// this exists to close (ADR — encryption at rest). Weight, not colour, is
+// what marks this line: it is information every download needs to be read
+// alongside, not a warning that something is wrong.
+.lw-backup__entry-encrypted {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lw-accent-d);
+}
+
+// Same treatment as the account row's confirm strip: it replaces the button
+// that opened it, so the action cannot be fired twice while its own question
+// is on screen. Bordered in danger rather than accent, because unlike a
+// password reset this one cannot be undone by doing it again — once the file
+// is out, it is out.
+.lw-backup__prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 11px;
+  border: var(--lw-border-width) solid var(--lw-danger);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-sunken);
+}
+
+.lw-backup__prompt-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--lw-text2);
+  text-wrap: pretty;
+}

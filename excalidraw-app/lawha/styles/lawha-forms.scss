@@ -1,0 +1,134 @@
+// Form primitives shared by the auth cards and the account panel.
+
+.lw-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lw-field__label {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--lw-muted);
+}
+
+.lw-field__input,
+.lw-select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--lw-h-lg);
+  padding: 12px 13px;
+  border: var(--lw-border-width) solid var(--lw-border2);
+  border-radius: var(--lw-r-input);
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-sans);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 120ms ease;
+
+  &::placeholder {
+    color: var(--lw-muted3);
+  }
+
+  &:focus {
+    border-color: var(--lw-accent);
+  }
+
+  &:disabled {
+    color: var(--lw-muted2);
+    cursor: default;
+  }
+}
+
+.lw-field--invalid .lw-field__input {
+  border-color: var(--lw-danger);
+}
+
+.lw-field__hint {
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--lw-muted2);
+}
+
+.lw-field__error {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lw-danger);
+}
+
+// The password rules, ticked off live. Muted until met, so the list reads as
+// "still to do" rather than as a wall of errors on an empty field.
+.lw-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--lw-font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--lw-muted2);
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+}
+
+.lw-rules__item--met {
+  color: var(--lw-stroke-green);
+}
+
+// A titled block inside a card: heading, caption, then content.
+.lw-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lw-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lw-text);
+}
+
+.lw-section__caption {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lw-text3);
+  text-wrap: pretty;
+}
+
+.lw-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-sizing: border-box;
+  padding: 22px;
+  background: var(--lw-surface-95, var(--lw-surface));
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-card);
+  box-shadow: var(--lw-shadow-card);
+}
+
+.lw-card--danger {
+  border-color: var(--lw-danger-b);
+}
+
+.lw-rule {
+  height: 1px;
+  background: var(--lw-border3);
+}
+
+.lw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}

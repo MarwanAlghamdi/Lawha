@@ -1,124 +1,119 @@
-<a href="https://excalidraw.com/" target="_blank" rel="noopener">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" alt="Excalidraw" srcset="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2_dark.png" />
-    <img alt="Excalidraw" src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github/excalidraw_github_cover_2.png" />
-  </picture>
-</a>
+# Lawha
 
-<h4 align="center">
-  <a href="https://excalidraw.com">Excalidraw Editor</a> |
-  <a href="https://plus.excalidraw.com/blog">Blog</a> |
-  <a href="https://docs.excalidraw.com">Documentation</a> |
-  <a href="https://plus.excalidraw.com">Excalidraw+</a>
-</h4>
+A self-hosted collaborative whiteboard. Built on [Excalidraw](https://github.com/excalidraw/excalidraw), with accounts, boards and a server you run yourself.
 
-<div align="center">
-  <h2>
-    An open source virtual hand-drawn style whiteboard. </br>
-    Collaborative and end-to-end encrypted. </br>
-  <br />
-  </h2>
-</div>
+![The Lawha dashboard: a folder rail, coloured tags, and five boards with live thumbnails](docs/screenshots/dashboard.png)
 
-<br />
-<p align="center">
-  <a href="https://github.com/excalidraw/excalidraw/blob/master/LICENSE">
-    <img alt="Excalidraw is released under the MIT license." src="https://img.shields.io/badge/license-MIT-blue.svg"  /></a>
-  <a href="https://www.npmjs.com/package/@excalidraw/excalidraw">
-    <img alt="npm downloads/month" src="https://img.shields.io/npm/dm/@excalidraw/excalidraw"  /></a>
-  <a href="https://docs.excalidraw.com/docs/introduction/contributing">
-    <img alt="PRs welcome!" src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat"  /></a>
-  <a href="https://discord.gg/UexuTaE">
-    <img alt="Chat on Discord" src="https://img.shields.io/discord/723672430744174682?color=738ad6&label=Chat%20on%20Discord&logo=discord&logoColor=ffffff&widget=false"/></a>
-  <a href="https://deepwiki.com/excalidraw/excalidraw">
-    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg" /></a>
-  <a href="https://twitter.com/excalidraw">
-    <img alt="Follow Excalidraw on Twitter" src="https://img.shields.io/twitter/follow/excalidraw.svg?label=follow+@excalidraw&style=social&logo=twitter"/></a>
-</p>
-
-<div align="center">
-  <figure>
-    <a href="https://excalidraw.com" target="_blank" rel="noopener">
-      <img src="https://excalidraw.nyc3.cdn.digitaloceanspaces.com/github%2Fproduct_showcase.png" alt="Product showcase" />
-    </a>
-    <figcaption>
-      <p align="center">
-        Create beautiful hand-drawn like diagrams, wireframes, or whatever you like.
-      </p>
-    </figcaption>
-  </figure>
-</div>
-
-## Features
-
-The Excalidraw editor (npm package) supports:
-
-- 💯&nbsp;Free & open-source.
-- 🎨&nbsp;Infinite, canvas-based whiteboard.
-- ✍️&nbsp;Hand-drawn like style.
-- 🌓&nbsp;Dark mode.
-- 🏗️&nbsp;Customizable.
-- 📷&nbsp;Image support.
-- 😀&nbsp;Shape libraries support.
-- 🌐&nbsp;Localization (i18n) support.
-- 🖼️&nbsp;Export to PNG, SVG & clipboard.
-- 💾&nbsp;Open format - export drawings as an `.excalidraw` json file.
-- ⚒️&nbsp;Wide range of tools - rectangle, circle, diamond, arrow, line, free-draw, eraser...
-- ➡️&nbsp;Arrow-binding & labeled arrows.
-- 🔙&nbsp;Undo / Redo.
-- 🔍&nbsp;Zoom and panning support.
-
-## Excalidraw.com
-
-The app hosted at [excalidraw.com](https://excalidraw.com) is a minimal showcase of what you can build with Excalidraw. Its [source code](https://github.com/excalidraw/excalidraw/tree/master/excalidraw-app) is part of this repository as well, and the app features:
-
-- 📡&nbsp;PWA support (works offline).
-- 🤼&nbsp;Real-time collaboration.
-- 🔒&nbsp;End-to-end encryption.
-- 💾&nbsp;Local-first support (autosaves to the browser).
-- 🔗&nbsp;Shareable links (export to a readonly link you can share with others).
-
-We'll be adding these features as drop-in plugins for the npm package in the future.
+> **This is a fork of [Excalidraw](https://github.com/excalidraw/excalidraw).**.
 
 ## Quick start
 
-**Note:** following instructions are for installing the Excalidraw [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw) when integrating Excalidraw into your own app. To run the repository locally for development, please refer to our [Development Guide](https://docs.excalidraw.com/docs/introduction/development).
-
-Use `npm` or `yarn` to install the package.
-
 ```bash
-npm install react react-dom @excalidraw/excalidraw
-# or
-yarn add react react-dom @excalidraw/excalidraw
+git clone https://github.com/MarwanAlghamdi/Lawha.git lawha
+cd lawha
+./run.sh
 ```
 
-Check out our [documentation](https://docs.excalidraw.com/docs/@excalidraw/excalidraw/installation) for more details!
+The first run copies `.env` and `lawha.env` from the examples, then stops so you can fill them in. Set `LAWHA_PUBLISHED_PORT` (default `9002`), then run `./run.sh` again.
 
-## Contributing
+Open **http://localhost:9002**.
 
-- Missing something or found a bug? [Report here](https://github.com/excalidraw/excalidraw/issues).
-- Want to contribute? Check out our [contribution guide](https://docs.excalidraw.com/docs/introduction/contributing) or let us know on [Discord](https://discord.gg/UexuTaE).
-- Want to help with translations? See the [translation guide](https://docs.excalidraw.com/docs/introduction/contributing#translating).
+Your admin password is printed **once**, to the log:
 
-## Integrations
+```bash
+docker compose logs lawha-server
+```
 
-- [VScode extension](https://marketplace.visualstudio.com/items?itemName=pomdtr.excalidraw-editor)
-- [npm package](https://www.npmjs.com/package/@excalidraw/excalidraw)
+| Command            | Does                            |
+| ------------------ | ------------------------------- |
+| `./run.sh`         | Build, start, wait for health   |
+| `./run.sh check`   | Preflight only, changes nothing |
+| `./run.sh secret`  | Print one strong random secret  |
+| `./run.sh tls`     | Mint the certificate for HTTPS  |
+| `./run.sh encrypt` | Encrypt the database (one way)  |
+| `./run.sh public`  | Also start the ngrok tunnel     |
+| `./run.sh stop`    | Stop, keep the data             |
+| `./run.sh logs`    | Follow the logs                 |
 
-## Who's integrating Excalidraw
+## Requirements
 
-[Google Cloud](https://googlecloudcheatsheet.withgoogle.com/architecture) • [Meta](https://meta.com/) • [CodeSandbox](https://codesandbox.io/) • [Obsidian Excalidraw](https://github.com/zsviczian/obsidian-excalidraw-plugin) • [Replit](https://replit.com/) • [Slite](https://slite.com/) • [Notion](https://notion.so/) • [HackerRank](https://www.hackerrank.com/) • and many others
+- Docker with Compose **v2.24+** (older versions fail on the `env_file` syntax)
 
-## Sponsors & support
+## Features
 
-If you like the project, you can become a sponsor at [Open Collective](https://opencollective.com/excalidraw) or use [Excalidraw+](https://plus.excalidraw.com/).
+- Everything Excalidraw does — infinite canvas, images, libraries, exports
+- Real-time collaboration with live cursors, names and avatars
+- Accounts, and sessions
+- Dashboard with folders, tags and search
+- **Invite codes** — three words that add someone as viewer or editor
+- **Share links** — view access without an account
+- **Undo that survives closing the tab**
+- **Admin panel** — accounts, an audit log with no delete, backups you can download
+- **Reset links, not passwords** — admins hand over a one-time link and hold nothing
+- Automatic verified backups on a timer
+- Optional encryption at rest, optional HTTPS, optional public access via ngrok
+- Several stacks on one host, each with its own data
 
-## Thank you for supporting Excalidraw
+## What it looks like
 
-[<img src="https://opencollective.com/excalidraw/tiers/sponsors/0/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/0/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/1/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/1/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/2/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/2/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/3/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/3/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/4/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/4/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/5/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/5/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/6/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/6/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/7/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/7/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/8/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/8/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/9/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/9/website) [<img src="https://opencollective.com/excalidraw/tiers/sponsors/10/avatar.svg?avatarHeight=120"/>](https://opencollective.com/excalidraw/tiers/sponsors/10/website)
+A board is Excalidraw's canvas and tools with Lawha's chrome around it — the board's name, who else is here, the save status, and Share. Both themes:
 
-<a href="https://opencollective.com/excalidraw#category-CONTRIBUTE" target="_blank"><img src="https://opencollective.com/excalidraw/tiers/backers.svg?avatarHeight=32"/></a>
+| Light | Dark |
+| --- | --- |
+| ![A board in the light theme](docs/screenshots/board.png) | ![The same board in the dark theme](docs/screenshots/board-dark.png) |
 
-Last but not least, we're thankful to these companies for offering their services for free:
+**Two people on one board.** Every cursor carries the name the server announced, not one the sender claimed, so a modified client cannot draw itself as somebody else. "Saved" means the write landed, not that it was attempted.
 
-[![Vercel](./.github/assets/vercel.svg)](https://vercel.com) [![Sentry](./.github/assets/sentry.svg)](https://sentry.io) [![Crowdin](./.github/assets/crowdin.svg)](https://crowdin.com)
+![Two people editing one board, the second person's cursor labelled with their name](docs/screenshots/collaboration.png)
+
+**Sharing is per person, and a link is a separate decision.** Add someone by name and pick their role, or mint a three-word invite code with an expiry and a use limit. General access — the link anyone can open — is its own switch and ships off.
+
+![The share panel: add people, invite codes, and general access](docs/screenshots/share.png)
+
+**`/admin` is unlinked, and it is how a forgotten password gets fixed.** There is no email anywhere, so an administrator hands over a one-time reset link rather than setting a password they would then know. Every action lands in an audit log with no delete.
+
+![The admin panel: accounts with reset and lock actions, and what the server is actually doing](docs/screenshots/admin.png)
+
+Regenerate these with `scripts/demo-screenshots.mjs` — it refuses to run against a real deployment, because it leaves accounts and boards behind.
+
+## Documentation
+
+| For | Read |
+| --- | --- |
+| Every setting | [`lawha.env.example`](lawha.env.example) |
+| The two config files | [docs/configuration.md](docs/configuration.md) |
+| Admins, sharing, resets | [docs/operating.md](docs/operating.md) |
+| Backup and restore | [docs/backups.md](docs/backups.md) |
+| Another machine, LAN name, ngrok | [docs/deploy.md](docs/deploy.md) |
+| Building and testing | [docs/development.md](docs/development.md) |
+| Why a decision was made | [docs/adr/](docs/adr/) |
+
+## Architecture
+
+```
+browser ──▶ lawha-app      nginx: serves the app, proxies /api and /socket.io
+            (http, +https) ↓
+            lawha-server   REST + socket relay + SQLite
+            lawha-backup   verified snapshots on a timer
+            lawha-ngrok    optional, `./run.sh public`
+```
+
+Only `lawha-app` binds host ports — one for HTTP, one for HTTPS when you ask for it. The default expects a gateway in front ([ADR 0018](docs/adr/0018-plain-http-behind-a-gateway.md)); `LAWHA_TLS=on` adds a listener of its own ([ADR 0022](docs/adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md)).
+
+## Known limitations
+
+- No email means no self-service password reset — an admin hands out a link
+- SQLite, single node. Built for a team, not a public service
+
+Two things that used to be on this list are now switches, both **off by default**:
+
+|  | Turn it on | What it costs |
+| --- | --- | --- |
+| **Boards in the clear** | `./run.sh encrypt` | The key lives beside the database, so it protects a _copied file_, not a stolen machine ([ADR 0020](docs/adr/0020-encryption-at-rest.md)) |
+| **Plain HTTP** | `./run.sh tls`, then `LAWHA_TLS=on` | Every device installs `certs/lawha-ca.pem` once, or sees a warning ([ADR 0022](docs/adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md)) |
+
+And one that is gone: several stacks now run on one host. Set `LAWHA_STACK`, `LAWHA_DATA_DIR` and `LAWHA_BACKUP_DIR` in `.env` — `./run.sh` refuses to start if you set the first without the others, because two servers on one SQLite file is data loss rather than an error either would report.
+
+## Licence
+
+MIT. Built on [Excalidraw](https://github.com/excalidraw/excalidraw), copyright (c) 2020 Excalidraw — their notice is preserved verbatim in [`LICENSE`](LICENSE), with Lawha's added beside it.

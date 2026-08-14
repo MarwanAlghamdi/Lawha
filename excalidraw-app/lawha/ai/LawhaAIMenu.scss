@@ -1,0 +1,145 @@
+.excalidraw {
+  // The trigger reads as available-but-inert: normal border, muted label, and
+  // the badge carrying the actual news. Greying the whole control out would
+  // make it look broken rather than forthcoming.
+  .lw-ai-trigger {
+    color: var(--lw-muted);
+    gap: 7px;
+
+    &:hover:not(:disabled) {
+      border-color: var(--lw-stroke-purple);
+      color: var(--lw-stroke-purple);
+    }
+  }
+
+  // A four-point star, drawn from one element.
+  .lw-ai-trigger__glyph {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    background: currentColor;
+    clip-path: polygon(
+      50% 0%,
+      61% 39%,
+      100% 50%,
+      61% 61%,
+      50% 100%,
+      39% 61%,
+      0% 50%,
+      39% 39%
+    );
+  }
+
+  .lw-ai__badge {
+    letter-spacing: 0.04em;
+  }
+
+  .lw-ai {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 330px;
+    max-width: calc(100vw - 28px);
+    padding: 16px;
+    background: var(--lw-surface-98);
+    border: var(--lw-border-width) solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    box-shadow: var(--lw-shadow-popover);
+    z-index: var(--zIndex-ui-library);
+  }
+
+  .lw-ai__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lw-ai__heading {
+    font-family: var(--lw-font-sans);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--lw-text2);
+  }
+
+  .lw-ai__spacer {
+    flex: 1;
+  }
+
+  .lw-ai__close {
+    border: none;
+    background: none;
+    font-size: 17px;
+    line-height: 1;
+    color: var(--lw-muted);
+    cursor: pointer;
+    padding: 8px;
+    margin: -8px;
+
+    &:hover {
+      color: var(--lw-accent);
+    }
+  }
+
+  .lw-ai__blurb {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--lw-text3);
+    text-wrap: pretty;
+  }
+
+  .lw-ai__list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .lw-ai__item {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 11px 12px;
+    text-align: start;
+    border: var(--lw-border-width) solid var(--lw-border3);
+    border-radius: var(--lw-r-md);
+    background: var(--lw-sunken);
+    font-family: var(--lw-font-sans);
+
+    // Unavailable, and it must look it. Not `opacity` on the row: that would
+    // wash out the badge too, which is the one part that has to stay readable.
+    cursor: default;
+
+    &:disabled {
+      color: var(--lw-muted);
+    }
+  }
+
+  .lw-ai__item-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lw-ai__item-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--lw-muted);
+  }
+
+  .lw-ai__item-blurb {
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--lw-muted2);
+    text-wrap: pretty;
+  }
+
+  // The phone bottom-sheet geometry lives in LawhaPanel.scss.
+}

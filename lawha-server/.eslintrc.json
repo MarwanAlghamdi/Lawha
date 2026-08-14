@@ -1,0 +1,56 @@
+// lawha-server's own config, because the repo root's extends `react-app` and
+// this is a Node server with no JSX in it.
+//
+// COMMENTS, NOT A "//" KEY. The first draft of this file carried its prose in a
+// top-level `"//"` array, which is a common trick and is rejected outright here:
+// ESLint 7 validates the config schema and answers `Unexpected top-level
+// property "//"` — not for this directory, for the whole run, so `yarn test:code`
+// fails across all 791 files. ESLint strips `//` and `/* */` from .eslintrc.json
+// before parsing it, so real comments are both legal and safer.
+//
+// `root: true` stops ESLint searching upwards. That is deliberate and stays —
+// but until now this file also had `rules: {}`, so `root: true` meant every file
+// under lawha-server resolved EXACTLY ZERO rules while appearing to be linted.
+// `yarn test:code` walked 13,000 lines of server and found nothing it was
+// capable of finding. Measured: 0 rules here against 305 for an app file. That
+// is the worst shape a gate can take — it reports 0 errors over 59 files, and
+// the 0 is guaranteed rather than earned.
+//
+// What is switched on is what earns its keep on a Node service:
+//
+//   eslint:recommended        real defects — unreachable code, duplicate keys
+//   prettier/prettier         one format, mechanically enforced
+//
+// prettier/prettier is not cosmetic here. `yarn test:other` only covers
+// css,scss,json,md,html,yml; TypeScript formatting in this repo is enforced
+// through this rule and nowhere else, so until now no .ts file under
+// lawha-server had ever been checked by anything.
+//
+// What is deliberately NOT on: plugin:@typescript-eslint/recommended. Measured
+// before deciding — it adds 184 no-non-null-assertion warnings, and `!` is used
+// on purpose here after a check the checker cannot see. A rule that fires 184
+// times on existing, correct code is a rule people learn to ignore.
+//
+// `no-undef` is OFF, which is standard for TypeScript and not laziness: it does
+// not know ambient types, so it reported `NodeJS` and `RequestInit` as undefined
+// across 14 sites. The compiler already answers this question and
+// `yarn test:typecheck:server` already asks it.
+//
+// STILL NOT LINTED, and said out loud rather than left to be discovered:
+// `scripts/*.mjs` — 8,800 lines including the three suites `yarn test:server`
+// runs. `test:code` passes `--ext .js,.ts,.tsx`, which excludes .mjs, so those
+// files are invisible to the linter no matter what this file says.
+{
+  "root": true,
+  "env": { "node": true, "es2021": true },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "plugins": ["@typescript-eslint", "prettier"],
+  "extends": ["eslint:recommended", "prettier"],
+  "rules": {
+    "prettier/prettier": "error",
+    "no-undef": "off",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }]
+  }
+}

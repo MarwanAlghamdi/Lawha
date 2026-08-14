@@ -295,6 +295,8 @@
     "saveLibraryError": "Couldn't save library to storage. Please save your library to a file locally to make sure you don't lose changes.",
     "collabSaveFailed": "Couldn't save to the backend database. If problems persist, you should save your file locally to ensure you don't lose your work.",
     "collabSaveFailed_sizeExceeded": "Couldn't save to the backend database, the canvas seems to be too big. You should save the file locally to ensure you don't lose your work.",
+    "collabAuthRequired": "Sign in to open this board. Your session may have expired.",
+    "collabForbidden": "You don't have access to this board. Ask the owner to share it with you.",
     "imageToolNotSupported": "Images are disabled.",
     "brave_measure_text_error": {
       "line1": "Looks like you are using Brave browser with the <bold>Aggressively Block Fingerprinting</bold> setting enabled.",
@@ -564,7 +566,9 @@
     "pasteAsSingleElement": "Use {{shortcut}} to paste as a single element,\nor paste into an existing text editor",
     "unableToEmbed": "Embedding this url is currently not allowed. Raise an issue on GitHub to request the url whitelisted",
     "unrecognizedLinkFormat": "The link you embedded does not match the expected format. Please try to paste the 'embed' string provided by the source site",
-    "elementLinkCopied": "Link copied to clipboard"
+    "elementLinkCopied": "Link copied to clipboard",
+    "undoHistorySkipped_one": "Skipped 1 undo entry a collaborator has changed since.",
+    "undoHistorySkipped": "Skipped {{count}} undo entries a collaborator has changed since."
   },
   "colors": {
     "transparent": "Transparent",

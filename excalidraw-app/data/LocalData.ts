@@ -41,6 +41,8 @@ import type { MaybePromise } from "@excalidraw/common/utility-types";
 import { appJotaiStore, atom } from "../app-jotai";
 import { SAVE_TO_LOCAL_STORAGE_TIMEOUT, STORAGE_KEYS } from "../app_constants";
 
+import { scopedAppStateKey, scopedElementsKey } from "./currentBoard";
+
 import { FileManager } from "./FileManager";
 import { FileStatusStore } from "./fileStatusStore";
 import { Locker } from "./Locker";
@@ -87,14 +89,12 @@ const saveDataStateToLocalStorage = (
       _appState.openSidebar = null;
     }
 
+    // Board-scoped, so two boards do not overwrite each other's cache.
     localStorage.setItem(
-      STORAGE_KEYS.LOCAL_STORAGE_ELEMENTS,
+      scopedElementsKey(),
       JSON.stringify(getNonDeletedElements(elements)),
     );
-    localStorage.setItem(
-      STORAGE_KEYS.LOCAL_STORAGE_APP_STATE,
-      JSON.stringify(_appState),
-    );
+    localStorage.setItem(scopedAppStateKey(), JSON.stringify(_appState));
     updateBrowserStateVersion(STORAGE_KEYS.VERSION_DATA_STATE);
     if (localStorageQuotaExceeded) {
       appJotaiStore.set(localStorageQuotaExceededAtom, false);
