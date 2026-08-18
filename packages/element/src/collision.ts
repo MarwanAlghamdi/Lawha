@@ -44,6 +44,7 @@ import {
   isFreeDrawElement,
   isIframeLikeElement,
   isImageElement,
+  isLawhaElement,
   isLinearElement,
   isTextElement,
 } from "./typeChecks";
@@ -98,7 +99,13 @@ export const shouldTestInside = (element: ExcalidrawElement) => {
     return isDraggableFromInside && isPathALoop(element.points);
   }
 
-  return isDraggableFromInside || isImageElement(element);
+  // LAWHA: a table, tensor or code block paints a solid body of its own
+  // regardless of `backgroundColor` — a code block is literally a dark card.
+  // Hitting only its outline would be wrong for exactly the reason it is wrong
+  // for an image: what you see filled is what you expect to be able to grab.
+  return (
+    isDraggableFromInside || isImageElement(element) || isLawhaElement(element)
+  );
 };
 
 export type HitTestArgs = {

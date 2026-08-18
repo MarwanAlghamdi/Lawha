@@ -13,6 +13,8 @@ import {
   CODE_PAD_X,
   CODE_PAD_Y,
   CODE_THEME,
+  codeFontString,
+  codeGutterWidth,
 } from "@excalidraw/element";
 
 import type { Radians } from "@excalidraw/math";
@@ -58,6 +60,10 @@ export const CodeBlockEditor = ({
   }, []);
 
   const zoom = appState.zoom.value;
+  // Indent by the gutter, so the code sits at the same x whether it is being
+  // drawn or typed. Without this the whole snippet jumps sideways the moment
+  // you double-click it, which reads as the block having moved.
+  const gutter = measureGutter(element.source, element.showLineNumbers);
   const centre = pointRotateRads(
     pointFrom(
       element.x + element.width / 2,
@@ -114,7 +120,9 @@ export const CodeBlockEditor = ({
         height: `${(element.height - CODE_HEADER_HEIGHT) * zoom}px`,
         transform: `translate(-50%, -50%) rotate(${element.angle}rad)`,
         margin: 0,
-        padding: `${CODE_PAD_Y * zoom}px ${CODE_PAD_X * zoom}px`,
+        padding: `${CODE_PAD_Y * zoom}px ${CODE_PAD_X * zoom}px ${
+          CODE_PAD_Y * zoom
+        }px ${(CODE_PAD_X + gutter) * zoom}px`,
         border: "none",
         outline: `${Math.max(1, zoom)}px solid var(--color-primary)`,
         borderRadius: 0,
@@ -136,5 +144,30 @@ export const CodeBlockEditor = ({
       autoCorrect="off"
       spellCheck={false}
     />
+  );
+};
+
+/**
+ * The gutter width, measured with the real font rather than an assumed
+ * character width — the same measurement the canvas renderer makes, so the two
+ * agree on any machine.
+ */
+let measuringContext: CanvasRenderingContext2D | null = null;
+
+const measureGutter = (source: string, showLineNumbers: boolean): number => {
+  if (!showLineNumbers) {
+    return 0;
+  }
+  if (!measuringContext) {
+    measuringContext = document.createElement("canvas").getContext("2d");
+  }
+  if (!measuringContext) {
+    return 0;
+  }
+  measuringContext.font = codeFontString();
+  return codeGutterWidth(
+    source.split("\n").length,
+    showLineNumbers,
+    measuringContext,
   );
 };

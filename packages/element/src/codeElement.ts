@@ -110,6 +110,27 @@ export const colorForScope = (scope: string | null): string => {
  * block is not systematically too narrow on a machine whose monospace face is
  * wider than the one this was written on.
  */
+/**
+ * The gutter's width for a snippet of `lineCount` lines.
+ *
+ * Shared by the measurer, the renderer and the DOM editor, so the text sits at
+ * the same x in all three and does not jump sideways when you start typing.
+ */
+export const codeGutterWidth = (
+  lineCount: number,
+  showLineNumbers: boolean,
+  context: CanvasRenderingContext2D,
+): number => {
+  if (!showLineNumbers) {
+    return 0;
+  }
+  const digits = String(Math.max(1, lineCount)).length;
+  return context.measureText("0".repeat(digits)).width + GUTTER_GAP;
+};
+
+/** The font the canvas and any DOM editor must share. */
+export const codeFontString = () => codeFont;
+
 export const measureCodeBlock = (
   source: string,
   showLineNumbers: boolean,
@@ -122,10 +143,7 @@ export const measureCodeBlock = (
     (max, line) => Math.max(max, context.measureText(line).width),
     0,
   );
-  const digits = String(Math.max(1, lines.length)).length;
-  const gutter = showLineNumbers
-    ? context.measureText("0".repeat(digits)).width + GUTTER_GAP
-    : 0;
+  const gutter = codeGutterWidth(lines.length, showLineNumbers, context);
   context.restore();
 
   return {
@@ -211,10 +229,11 @@ export const drawCodeOnCanvas = (
   );
   context.restore();
 
-  const digits = String(Math.max(1, highlighted.lines.length)).length;
-  const gutterWidth = element.showLineNumbers
-    ? context.measureText("0".repeat(digits)).width + GUTTER_GAP
-    : 0;
+  const gutterWidth = codeGutterWidth(
+    highlighted.lines.length,
+    element.showLineNumbers,
+    context,
+  );
   const codeLeft = CODE_PAD_X + gutterWidth;
   const top = CODE_HEADER_HEIGHT + CODE_PAD_Y;
 
