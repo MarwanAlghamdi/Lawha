@@ -213,6 +213,11 @@ export const AllowedExcalidrawActiveTools: Record<
   freedraw: true,
   eraser: false,
   custom: true,
+  // LAWHA: the native grid tools.
+  table: true,
+  matrix: true,
+  tensor: true,
+  code: true,
   frame: true,
   embeddable: true,
   hand: true,

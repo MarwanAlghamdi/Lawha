@@ -2559,3 +2559,41 @@ export const settingsIcon = createIcon(
   </g>,
   tablerIconProps,
 );
+
+// LAWHA: the native grid tools.
+export const TableToolIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M3 14.5h18M9 5v14M15 5v14" />
+  </g>,
+  tablerIconProps,
+);
+
+export const MatrixToolIcon = createIcon(
+  <g strokeWidth="1.5">
+    <path d="M8 4H5v16h3M16 4h3v16h-3" />
+    <circle cx="10" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="14" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="10" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+    <circle cx="14" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+  </g>,
+  tablerIconProps,
+);
+
+export const TensorToolIcon = createIcon(
+  <g strokeWidth="1.5">
+    <path d="M4 9.5h11v10H4z" />
+    <path d="M4 9.5L8 5.5h11v10l-4 4" />
+    <path d="M15 9.5L19 5.5" />
+  </g>,
+  tablerIconProps,
+);
+
+export const CodeToolIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 9h18" />
+    <path d="M9.5 12.5L8 14l1.5 1.5M14.5 12.5L16 14l-1.5 1.5" />
+  </g>,
+  tablerIconProps,
+);

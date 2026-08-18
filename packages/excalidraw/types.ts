@@ -178,7 +178,14 @@ export type ToolType =
   | "magicframe"
   | "embeddable"
   | "laser"
-  | "autoshape";
+  | "autoshape"
+  // LAWHA: `matrix` is a tool but not an element type — it creates a `table`
+  // element with `variant: "matrix"`. The two share a data model and differ
+  // only in how they are read.
+  | "table"
+  | "matrix"
+  | "tensor"
+  | "code";
 
 export type ElementOrToolType = ExcalidrawElementType | ToolType | "custom";
 

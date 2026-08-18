@@ -500,6 +500,11 @@ export const TOOL_TYPE = {
   embeddable: "embeddable",
   laser: "laser",
   autoshape: "autoshape",
+  // LAWHA: the native grid types.
+  table: "table",
+  matrix: "matrix",
+  tensor: "tensor",
+  code: "code",
 } as const;
 
 export const EDITOR_LS_KEYS = {

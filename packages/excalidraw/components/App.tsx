@@ -125,6 +125,9 @@ import {
   LinearElementEditor,
   newElementWith,
   newFrameElement,
+  newTableElement,
+  newTensorElement,
+  newCodeElement,
   newFreeDrawElement,
   newEmbeddableElement,
   newMagicFrameElement,
@@ -8836,6 +8839,19 @@ class App extends React.Component<AppProps, AppState> {
     } else if (this.state.activeTool.type === "autoshape") {
       this.drawShape.handlePointerDown(pointerDownState);
     } else if (
+      // LAWHA: the native grid types are drag-to-size like a rectangle, but
+      // each needs its own constructor, so they cannot go through
+      // `createGenericElementOnPointerDown`.
+      this.state.activeTool.type === "table" ||
+      this.state.activeTool.type === "matrix" ||
+      this.state.activeTool.type === "tensor" ||
+      this.state.activeTool.type === "code"
+    ) {
+      this.createLawhaElementOnPointerDown(
+        pointerDownState,
+        this.state.activeTool.type,
+      );
+    } else if (
       this.state.activeTool.type !== "eraser" &&
       this.state.activeTool.type !== "hand" &&
       this.state.activeTool.type !== "image"
@@ -10501,6 +10517,88 @@ class App extends React.Component<AppProps, AppState> {
         newElement: element,
       });
     }
+  };
+
+  /**
+   * LAWHA: what a freshly placed code block contains.
+   *
+   * Something real rather than a placeholder, so the block is immediately
+   * recognisable as code and the language detector has something to work with
+   * — an empty block would detect as plaintext and render grey.
+   */
+  private static readonly LAWHA_DEFAULT_CODE = [
+    "def greet(name: str) -> str:",
+    '    return f"hello, {name}"',
+    "",
+    'print(greet("world"))',
+  ].join("\n");
+
+  /**
+   * LAWHA: create a table, matrix, tensor or code block.
+   *
+   * Modelled on `createFrameElementOnPointerDown` — snap to the grid, build,
+   * insert, and hand the element to `newElement` so the ordinary drag-to-size
+   * path finishes it. Each type needs its own constructor, which is why this
+   * is separate from `createGenericElementOnPointerDown`; everything after
+   * construction is the editor's existing behaviour.
+   */
+  private createLawhaElementOnPointerDown = (
+    pointerDownState: PointerDownState,
+    type: Extract<ToolType, "table" | "matrix" | "tensor" | "code">,
+  ): void => {
+    const [gridX, gridY] = getGridPoint(
+      pointerDownState.origin.x,
+      pointerDownState.origin.y,
+      this.lastPointerDownEvent?.[KEYS.CTRL_OR_CMD]
+        ? null
+        : this.getEffectiveGridSize(),
+    );
+
+    const base = {
+      x: gridX,
+      y: gridY,
+      strokeColor: this.state.currentItemStrokeColor,
+      backgroundColor: this.state.currentItemBackgroundColor,
+      fillStyle: this.state.currentItemFillStyle,
+      strokeWidth: this.getCurrentItemStrokeWidth(
+        type === "matrix" ? "table" : type,
+      ),
+      strokeStyle: this.state.currentItemStrokeStyle,
+      roughness: this.state.currentItemRoughness,
+      opacity: this.state.currentItemOpacity,
+      locked: false,
+    } as const;
+
+    let element;
+    switch (type) {
+      case "matrix":
+        element = newTableElement({
+          ...base,
+          rows: 3,
+          cols: 3,
+          variant: "matrix",
+        });
+        break;
+      case "tensor":
+        element = newTensorElement({ ...base, dims: [64, 32, 32] });
+        break;
+      case "code":
+        element = newCodeElement({
+          ...base,
+          source: App.LAWHA_DEFAULT_CODE,
+          language: "auto",
+        });
+        break;
+      default:
+        element = newTableElement({ ...base, rows: 3, cols: 3 });
+    }
+
+    this.insertNewElement(element);
+
+    this.setState({
+      multiElement: null,
+      newElement: element,
+    });
   };
 
   private createFrameElementOnPointerDown = (

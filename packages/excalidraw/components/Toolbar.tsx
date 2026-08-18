@@ -17,6 +17,10 @@ import {
   drawShapeToolIcon,
   EmbedIcon,
   frameToolIcon,
+  TableToolIcon,
+  MatrixToolIcon,
+  TensorToolIcon,
+  CodeToolIcon,
   LassoIcon,
   laserPointerToolIcon,
   MagicIcon,
@@ -117,6 +121,47 @@ const ExtraToolsDropdown = ({
           disabled={isToolButtonDisabled(app, "frame")}
         >
           {t("toolBar.frame")}
+        </DropdownMenu.Item>
+        {/*
+          LAWHA: the native grid tools. In the extra-tools menu rather than the
+          main row because the ten numeric slots are taken and these are
+          reached deliberately rather than constantly.
+        */}
+        <DropdownMenu.Item
+          onSelect={() => app.setActiveTool({ type: "table" })}
+          icon={TableToolIcon}
+          data-testid="toolbar-table"
+          selected={app.state.activeTool.type === "table"}
+          disabled={isToolButtonDisabled(app, "table")}
+        >
+          {t("toolBar.table")}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          onSelect={() => app.setActiveTool({ type: "matrix" })}
+          icon={MatrixToolIcon}
+          data-testid="toolbar-matrix"
+          selected={app.state.activeTool.type === "matrix"}
+          disabled={isToolButtonDisabled(app, "matrix")}
+        >
+          {t("toolBar.matrix")}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          onSelect={() => app.setActiveTool({ type: "tensor" })}
+          icon={TensorToolIcon}
+          data-testid="toolbar-tensor"
+          selected={app.state.activeTool.type === "tensor"}
+          disabled={isToolButtonDisabled(app, "tensor")}
+        >
+          {t("toolBar.tensor")}
+        </DropdownMenu.Item>
+        <DropdownMenu.Item
+          onSelect={() => app.setActiveTool({ type: "code" })}
+          icon={CodeToolIcon}
+          data-testid="toolbar-code"
+          selected={app.state.activeTool.type === "code"}
+          disabled={isToolButtonDisabled(app, "code")}
+        >
+          {t("toolBar.code")}
         </DropdownMenu.Item>
         <DropdownMenu.Item
           onSelect={() => app.setActiveTool({ type: "embeddable" })}

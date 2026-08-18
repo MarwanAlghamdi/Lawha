@@ -28,6 +28,10 @@ import {
   handIcon,
   frameToolIcon,
   EmbedIcon,
+  TableToolIcon,
+  MatrixToolIcon,
+  TensorToolIcon,
+  CodeToolIcon,
 } from "./icons";
 
 import type {
@@ -65,6 +69,23 @@ const defineTools = <T extends Record<string, ToolConfig>>(tools: T) =>
  * manually, so entries without a toolbar slot (e.g. laser) are data-only.
  */
 export const TOOLS = defineTools({
+  // LAWHA: the native grid tools. No numeric key — the ten slots are taken,
+  // and these live in the extra-tools menu rather than the main row.
+  table: {
+    icon: TableToolIcon,
+    fillable: true,
+  },
+  matrix: {
+    icon: MatrixToolIcon,
+    fillable: true,
+  },
+  tensor: {
+    icon: TensorToolIcon,
+    fillable: true,
+  },
+  code: {
+    icon: CodeToolIcon,
+  },
   hand: {
     icon: handIcon,
     letterKey: KEYS.H,
