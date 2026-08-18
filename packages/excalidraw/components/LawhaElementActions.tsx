@@ -1,6 +1,9 @@
 import { useState } from "react";
 
-import { DEFAULT_ELEMENT_BACKGROUND_PICKS } from "@excalidraw/common";
+import {
+  DEFAULT_ELEMENT_BACKGROUND_PICKS,
+  DEFAULT_ELEMENT_STROKE_PICKS,
+} from "@excalidraw/common";
 import {
   CaptureUpdateAction,
   deleteColumn,
@@ -38,6 +41,9 @@ import {
   TableDeleteRowIcon,
   TableHeaderOffIcon,
   TableHeaderOnIcon,
+  TextAlignCenterIcon,
+  TextAlignLeftIcon,
+  TextAlignRightIcon,
 } from "./icons";
 import { RadioSelection } from "./RadioSelection";
 
@@ -191,16 +197,28 @@ const TableActions = ({
           })),
         ).flat();
 
-  const fillCells = (fill: string) => {
+  /**
+   * Paint the current selection — a cell, a row, a column, or the whole grid
+   * when nothing is picked out. `transparent` clears rather than paints, which
+   * is the only reading of a transparent swatch that is not a no-op.
+   */
+  const paintCells = (key: "fill" | "color", value: string) => {
     const next = element.cells.map((row, r) =>
       row.map((cell, c) =>
         target.some((t) => t.row === r && t.col === c)
-          ? { ...cell, fill: fill === "transparent" ? null : fill }
+          ? { ...cell, [key]: value === "transparent" ? null : value }
           : cell,
       ),
     );
     mutate(element, { cells: next });
   };
+
+  /** The selection's common value for a cell key, or null when mixed. */
+  const commonOf = (key: "fill" | "color") =>
+    target.reduce<string | null | undefined>((acc, { row, col }) => {
+      const v = element.cells[row]?.[col]?.[key] ?? "transparent";
+      return acc === undefined || acc === v ? v : null;
+    }, undefined) ?? null;
 
   // Remove acts on the bulk selection when there is one, otherwise the last.
   const at = (axis: "row" | "col") =>
@@ -211,14 +229,6 @@ const TableActions = ({
             1,
         )
       : (axis === "row" ? tableRowCount(element) : tableColCount(element)) - 1;
-
-  const commonFill =
-    target.length > 0
-      ? target.reduce<string | null | undefined>((acc, { row, col }) => {
-          const fill = element.cells[row]?.[col]?.fill ?? "transparent";
-          return acc === undefined || acc === fill ? fill : null;
-        }, undefined) ?? null
-      : null;
 
   return (
     <>
@@ -259,6 +269,37 @@ const TableActions = ({
       </fieldset>
 
       <fieldset>
+        <legend>{t("labels.tableAlign")}</legend>
+        <div className="buttonList">
+          <RadioSelection<ExcalidrawTableElement["textAlign"]>
+            group="lawha-text-align"
+            options={[
+              {
+                value: "left",
+                text: t("labels.left"),
+                icon: TextAlignLeftIcon,
+                testId: "lawha-align-left",
+              },
+              {
+                value: "center",
+                text: t("labels.center"),
+                icon: TextAlignCenterIcon,
+                testId: "lawha-align-center",
+              },
+              {
+                value: "right",
+                text: t("labels.right"),
+                icon: TextAlignRightIcon,
+                testId: "lawha-align-right",
+              },
+            ]}
+            value={element.textAlign}
+            onChange={(textAlign) => mutate(element, { textAlign })}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset>
         <legend>
           {cells.length > 0
             ? t("labels.tableFillSelected")
@@ -266,11 +307,19 @@ const TableActions = ({
         </legend>
         <TopPicks
           type="elementBackground"
-          activeColor={
-            commonFill === "transparent" ? "transparent" : commonFill
-          }
-          onChange={fillCells}
+          activeColor={commonOf("fill")}
+          onChange={(fill) => paintCells("fill", fill)}
           topPicks={DEFAULT_ELEMENT_BACKGROUND_PICKS}
+        />
+      </fieldset>
+
+      <fieldset>
+        <legend>{t("labels.tableTextColor")}</legend>
+        <TopPicks
+          type="elementStroke"
+          activeColor={commonOf("color")}
+          onChange={(color) => paintCells("color", color)}
+          topPicks={DEFAULT_ELEMENT_STROKE_PICKS}
         />
       </fieldset>
 

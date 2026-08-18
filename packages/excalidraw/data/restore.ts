@@ -742,11 +742,19 @@ export const restoreElement = (
           Array.from({ length: cols }, (_, col) => ({
             text: typeof row?.[col]?.text === "string" ? row[col]!.text : "",
             fill: typeof row?.[col]?.fill === "string" ? row[col]!.fill : null,
+            color:
+              typeof row?.[col]?.color === "string" ? row[col]!.color : null,
           })),
         ),
         colWidths: normalise(element.colWidths, cols),
         rowHeights: normalise(element.rowHeights, rows),
         headerRow: element.headerRow !== false,
+        textAlign:
+          element.textAlign === "center" || element.textAlign === "right"
+            ? element.textAlign
+            : element.variant === "matrix"
+            ? "right"
+            : "left",
         // Written by a build older than the one that put text size on the
         // element. The constant is what that build drew with, so defaulting to
         // it keeps the picture identical rather than resizing somebody's table

@@ -57,7 +57,7 @@ describe("a fresh table", () => {
     const t = table(2, 3);
     expect(t.cells).toHaveLength(2);
     expect(t.cells[0]).toHaveLength(3);
-    expect(t.cells[0]![0]).toEqual({ text: "", fill: null });
+    expect(t.cells[0]![0]).toEqual({ text: "", fill: null, color: null });
   });
 
   it("treats a matrix as the same grid without a header", () => {
@@ -264,7 +264,7 @@ describe("withCell", () => {
     const t = table(2, 2);
     const cells = withCell(t, 1, 1, { text: "x", fill: "#ffc9c9" });
 
-    expect(cells[1]![1]).toEqual({ text: "x", fill: "#ffc9c9" });
+    expect(cells[1]![1]).toEqual({ text: "x", fill: "#ffc9c9", color: null });
     expect(cells[0]).toBe(t.cells[0]);
   });
 });

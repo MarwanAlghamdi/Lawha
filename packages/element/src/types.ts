@@ -211,6 +211,14 @@ export type ExcalidrawTableElement = _ExcalidrawElementBase &
     /** Whether row 0 is styled as a header. */
     headerRow: boolean;
     /**
+     * Horizontal alignment of every cell's text.
+     *
+     * Element-level rather than per cell: a column of numbers aligned three
+     * different ways is a mistake, not a feature, and per-cell alignment is
+     * the kind of state that only ever gets set by accident.
+     */
+    textAlign: "left" | "center" | "right";
+    /**
      * Cell text size.
      *
      * On the element rather than a module constant so that
@@ -231,6 +239,12 @@ export type TableCell = {
   text: string;
   /** Cell background. `null` inherits the element's `backgroundColor`. */
   fill: string | null;
+  /**
+   * Cell text colour. `null` means "work it out": the element's own
+   * `strokeColor`, or an ink chosen against the cell's fill when there is one,
+   * which is what keeps a heatmap legible at both ends of its ramp.
+   */
+  color: string | null;
 };
 
 /**
@@ -359,7 +373,13 @@ export type ExcalidrawBindableElement =
   | ExcalidrawIframeElement
   | ExcalidrawEmbeddableElement
   | ExcalidrawFrameElement
-  | ExcalidrawMagicFrameElement;
+  | ExcalidrawMagicFrameElement
+  // LAWHA: an arrow can point at a table, a tensor or a code block. They are
+  // rectanguloid and already fall through to the rectanguloid distance and
+  // collision paths, so binding needs the predicate and nothing else.
+  | ExcalidrawTableElement
+  | ExcalidrawTensorElement
+  | ExcalidrawCodeElement;
 
 export type ExcalidrawTextContainer =
   | ExcalidrawRectangleElement

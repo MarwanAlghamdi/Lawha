@@ -204,6 +204,7 @@ export const newTableElement = (
     variant?: ExcalidrawTableElement["variant"];
     cells?: ExcalidrawTableElement["cells"];
     headerRow?: boolean;
+    textAlign?: ExcalidrawTableElement["textAlign"];
     fontSize?: number;
     heatmap?: boolean;
     brackets?: boolean;
@@ -222,11 +223,19 @@ export const newTableElement = (
       cells:
         opts.cells ??
         Array.from({ length: rows }, () =>
-          Array.from({ length: cols }, () => ({ text: "", fill: null })),
+          Array.from({ length: cols }, () => ({
+            text: "",
+            fill: null,
+            color: null,
+          })),
         ),
       colWidths: even(cols),
       rowHeights: even(rows),
       headerRow: opts.headerRow ?? opts.variant !== "matrix",
+      // A matrix is read as numbers, which line up on the right; prose does
+      // not. Both remain overridable.
+      textAlign:
+        opts.textAlign ?? (opts.variant === "matrix" ? "right" : "left"),
       fontSize: opts.fontSize ?? DEFAULT_CELL_FONT_SIZE,
       // Matrix-only affordances, off for a plain table: a table of prose with
       // brackets round it is a matrix that is not one.

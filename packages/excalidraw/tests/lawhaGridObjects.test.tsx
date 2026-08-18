@@ -6,6 +6,8 @@ import {
   newCodeElement,
   newTableElement,
   newTensorElement,
+  anchorStrip,
+  plusButtons,
 } from "@excalidraw/element";
 
 import type {
@@ -14,10 +16,11 @@ import type {
   ExcalidrawTensorElement,
 } from "@excalidraw/element/types";
 
+import { restoreElements } from "../data/restore";
 import { Excalidraw } from "../index";
 
 import { API } from "./helpers/api";
-import { Keyboard, Pointer } from "./helpers/ui";
+import { Keyboard, Pointer, UI } from "./helpers/ui";
 import {
   fireEvent,
   GlobalTestState,
@@ -165,9 +168,9 @@ describe("lawha grid objects", () => {
       placeTable({
         cells: [
           [
-            { text: "a", fill: null },
-            { text: "b", fill: null },
-            { text: "c", fill: null },
+            { text: "a", fill: null, color: null },
+            { text: "b", fill: null, color: null },
+            { text: "c", fill: null, color: null },
           ],
         ],
         rows: 1,
@@ -335,6 +338,123 @@ describe("lawha grid objects", () => {
       Keyboard.keyPress(KEYS.ESCAPE, GlobalTestState.interactiveCanvas);
 
       expect(h.state.editingLawhaElementId).toBeNull();
+    });
+  });
+
+  describe("chrome does not leak into the canvas", () => {
+    it("does not create a text element when the add button is double-clicked", () => {
+      placeTable();
+      const [addCol] = plusButtons(table(), 1, "mouse");
+      const x = table().x + addCol!.x + addCol!.width / 2;
+      const y = table().y + addCol!.y + addCol!.height / 2;
+
+      // hover first: the buttons are revealed, not permanent
+      mouse.moveTo(table().x + 20, table().y + 20);
+      mouse.doubleClickAt(x, y);
+
+      expect(h.elements.filter((el) => el.type === "text")).toHaveLength(0);
+    });
+
+    it("does not create a text element when an anchor is double-clicked", () => {
+      placeTable();
+      const strip = anchorStrip(table(), "col", 1, 1, "mouse")!;
+      mouse.moveTo(table().x + 20, table().y + 20);
+      mouse.doubleClickAt(
+        table().x + strip.x + strip.width / 2,
+        table().y + strip.y + strip.height / 2,
+      );
+
+      expect(h.elements.filter((el) => el.type === "text")).toHaveLength(0);
+    });
+  });
+
+  describe("arrow binding", () => {
+    it.each([
+      [
+        "table",
+        () => newTableElement({ x: 100, y: 100, width: 200, height: 120 }),
+      ],
+      [
+        "tensor",
+        () => newTensorElement({ x: 100, y: 100, width: 200, height: 120 }),
+      ],
+      [
+        "code",
+        () => newCodeElement({ x: 100, y: 100, width: 200, height: 120 }),
+      ],
+    ])("binds an arrow to a %s, the way it binds to a rectangle", (_, make) => {
+      const target = make();
+      API.updateScene({
+        elements: [target],
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      API.setSelectedElements([]);
+
+      UI.clickTool("arrow");
+      mouse.downAt(400, 160);
+      mouse.moveTo(210, 160);
+      mouse.upAt(210, 160);
+
+      const arrow = h.elements.find((el) => el.type === "arrow") as any;
+      expect(arrow.endBinding?.elementId).toBe(target.id);
+      expect(
+        (h.elements[0] as any).boundElements?.some(
+          (bound: any) => bound.type === "arrow",
+        ),
+      ).toBe(true);
+    });
+  });
+
+  describe("cell content", () => {
+    it("aligns every cell the same way, and a matrix starts right-aligned", () => {
+      const plain = newTableElement({ x: 0, y: 0, width: 200, height: 100 });
+      const matrix = newTableElement({
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        variant: "matrix",
+      });
+      // numbers line up on the right; prose does not
+      expect(plain.textAlign).toBe("left");
+      expect(matrix.textAlign).toBe("right");
+    });
+
+    it("carries a per-cell text colour that survives a round trip", () => {
+      const element = newTableElement({
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 100,
+        cells: [
+          [
+            { text: "a", fill: null, color: "#e03131" },
+            { text: "b", fill: null, color: null },
+          ],
+        ],
+        rows: 1,
+        cols: 2,
+      });
+      const [restored] = restoreElements([element], null);
+      expect((restored as ExcalidrawTableElement).cells[0]![0]!.color).toBe(
+        "#e03131",
+      );
+      expect(
+        (restored as ExcalidrawTableElement).cells[0]![1]!.color,
+      ).toBeNull();
+    });
+
+    it("defaults a cell colour and alignment that an older board did not store", () => {
+      const legacy = {
+        ...newTableElement({ x: 0, y: 0, width: 200, height: 100 }),
+      } as any;
+      delete legacy.textAlign;
+      legacy.cells = [[{ text: "x", fill: null }]];
+
+      const [restored] = restoreElements([legacy], null);
+      const table = restored as ExcalidrawTableElement;
+      expect(table.textAlign).toBe("left");
+      expect(table.cells[0]![0]!.color).toBeNull();
     });
   });
 });

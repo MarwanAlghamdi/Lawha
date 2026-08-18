@@ -36,8 +36,8 @@ describe("lawha SVG export", () => {
         height: 150,
         cells: [
           [
-            { text: "Method", fill: null },
-            { text: "Acc", fill: null },
+            { text: "Method", fill: null, color: null },
+            { text: "Acc", fill: null, color: null },
           ],
         ],
         rows: 1,
@@ -60,12 +60,12 @@ describe("lawha SVG export", () => {
         variant: "matrix",
         cells: [
           [
-            { text: "1", fill: null },
-            { text: "0", fill: null },
+            { text: "1", fill: null, color: null },
+            { text: "0", fill: null, color: null },
           ],
           [
-            { text: "0", fill: null },
-            { text: "1", fill: null },
+            { text: "0", fill: null, color: null },
+            { text: "1", fill: null, color: null },
           ],
         ],
         rows: 2,

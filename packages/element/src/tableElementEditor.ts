@@ -315,6 +315,27 @@ export const getAnchorUnderCursor = (
   return null;
 };
 
+/**
+ * Whether a point lands on any of the table's own interior chrome.
+ *
+ * Used to swallow a gesture that pointer-down has already dealt with. Without
+ * it a double-click on an anchor or an add button falls past the table
+ * entirely and lands on the canvas, which creates a text element on top of the
+ * chrome that was clicked.
+ */
+export const isOnTableChrome = (
+  element: ExcalidrawTableElement,
+  elementsMap: ElementsMap,
+  scene: GlobalPoint,
+  zoom: number,
+  pointerType: string = "mouse",
+): boolean =>
+  getAnchorUnderCursor(element, elementsMap, scene, zoom, pointerType) !==
+    null ||
+  getPlusUnderCursor(element, elementsMap, scene, zoom, pointerType) !== null ||
+  getDividerUnderCursor(element, elementsMap, scene, zoom, pointerType) !==
+    null;
+
 /** The add button under the cursor, if any. */
 export const getPlusUnderCursor = (
   element: ExcalidrawTableElement,

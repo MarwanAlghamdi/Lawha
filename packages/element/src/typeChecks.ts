@@ -192,6 +192,11 @@ export const isBindableElement = <T extends ExcalidrawElement>(
       element.type === "embeddable" ||
       element.type === "frame" ||
       element.type === "magicframe" ||
+      // LAWHA: a diagram is mostly arrows pointing at things, and a table or a
+      // tensor block is exactly the kind of thing an arrow points at.
+      element.type === "table" ||
+      element.type === "tensor" ||
+      element.type === "code" ||
       (element.type === "text" && !element.containerId))
   );
 };
@@ -208,6 +213,9 @@ export const isRectanguloidElement = <T extends ExcalidrawElement>(
       element.type === "embeddable" ||
       element.type === "frame" ||
       element.type === "magicframe" ||
+      element.type === "table" ||
+      element.type === "tensor" ||
+      element.type === "code" ||
       (element.type === "text" && !element.containerId))
   );
 };
@@ -226,6 +234,9 @@ export const isRectangularElement = <T extends ExcalidrawElement>(
       element.type === "embeddable" ||
       element.type === "frame" ||
       element.type === "magicframe" ||
+      element.type === "table" ||
+      element.type === "tensor" ||
+      element.type === "code" ||
       element.type === "freedraw")
   );
 };

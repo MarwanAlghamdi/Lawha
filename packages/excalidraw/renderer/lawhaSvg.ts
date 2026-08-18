@@ -17,7 +17,9 @@ import {
   codeFontString,
   codeGutterWidth,
   colorForScope,
+  cellFill,
   getCell,
+  inkOn,
   getLineHeightInPx,
   getWrappedTextLines,
   gridLines,
@@ -105,17 +107,26 @@ export const renderTableTextToSvg = (
   const { box, xs, ys } = gridLines(element);
   const rows = tableRowCount(element);
   const cols = tableColCount(element);
-  const isMatrix = element.variant === "matrix";
-  const fontFamily = isMatrix ? FONT_FAMILY.Cascadia : FONT_FAMILY.Excalifont;
+  const fontFamily =
+    element.variant === "matrix"
+      ? FONT_FAMILY.Cascadia
+      : FONT_FAMILY.Excalifont;
   const fontSize = element.fontSize;
   const family = getFontFamilyString({ fontFamily });
   const font = getFontString({ fontSize, fontFamily });
   const lineHeightPx = getLineHeightInPx(fontSize, getLineHeight(fontFamily));
-  const fill = applyDarkModeFilter(
-    element.strokeColor,
-    renderConfig.theme === THEME.DARK,
-  );
+  const isDark = renderConfig.theme === THEME.DARK;
+  const fill = applyDarkModeFilter(element.strokeColor, isDark);
   const context = measurer();
+  const heatValues = element.heatmap
+    ? element.cells
+        .flat()
+        .map((c) => Number(c.text))
+        .filter((n) => Number.isFinite(n))
+    : [];
+  const range = heatValues.length
+    ? { min: Math.min(...heatValues), max: Math.max(...heatValues) }
+    : null;
 
   if (element.showIndices) {
     for (let col = 0; col < cols; col++) {
@@ -144,24 +155,38 @@ export const renderTableTextToSvg = (
       }
       const isHeader = element.headerRow && row === 0;
       const lines = getWrappedTextLines(text, font, maxWidth);
+      const cell = getCell(element, row, col);
+      const cellFillColor = cellFill(element, row, col, range);
+      const ink = cell?.color
+        ? applyDarkModeFilter(cell.color, isDark)
+        : inkOn(
+            cellFillColor ? applyDarkModeFilter(cellFillColor, isDark) : null,
+            fill,
+          );
 
       lines.forEach((line, index) => {
         const y = ys[row]! + CELL_PADDING + index * lineHeightPx;
         if (y > ys[row + 1]!) {
           return;
         }
-        let x = xs[col]! + CELL_PADDING;
-        let anchor = "start";
-        if (isMatrix) {
-          x = xs[col + 1]! - CELL_PADDING;
-          anchor = "end";
-        }
+        const anchor =
+          element.textAlign === "right"
+            ? "end"
+            : element.textAlign === "center"
+            ? "middle"
+            : "start";
+        const x =
+          element.textAlign === "right"
+            ? xs[col + 1]! - CELL_PADDING
+            : element.textAlign === "center"
+            ? (xs[col]! + xs[col + 1]!) / 2
+            : xs[col]! + CELL_PADDING;
         if (context) {
           context.font = font;
         }
         node.appendChild(
           svgText(doc, line.text, x, y, {
-            fill,
+            fill: ink,
             fontFamily: family,
             fontSize,
             anchor,

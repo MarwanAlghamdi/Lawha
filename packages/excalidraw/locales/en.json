@@ -74,6 +74,8 @@
     "tableHeaderRow": "Header row",
     "tableHeaderRowOn": "With header row",
     "tableHeaderRowOff": "No header row",
+    "tableAlign": "Cell alignment",
+    "tableTextColor": "Text colour",
     "tableFillAll": "Cell fill",
     "tableFillSelected": "Fill selection",
     "tableRemoveRow": "Remove row",

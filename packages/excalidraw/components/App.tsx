@@ -158,6 +158,7 @@ import {
   getCellUnderCursor,
   getDividerUnderCursor,
   getPlusUnderCursor,
+  isOnTableChrome,
   insertRow,
   insertColumn,
   tableRowCount,
@@ -7385,6 +7386,21 @@ class App extends React.Component<AppProps, AppState> {
           },
           editingLawhaElementId: null,
         });
+        return;
+      }
+
+      // Outside the grid but on the table's own chrome — an anchor, a divider,
+      // or an add button. Pointer-down already handled the gesture; falling
+      // through would drop a loose text element on top of the chrome, which is
+      // what a second click on `+` used to do.
+      if (
+        isOnTableChrome(
+          table,
+          this.scene.getNonDeletedElementsMap(),
+          pointFrom<GlobalPoint>(sceneX, sceneY),
+          this.state.zoom.value,
+        )
+      ) {
         return;
       }
     }

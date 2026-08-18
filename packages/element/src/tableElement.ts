@@ -230,7 +230,7 @@ export const moveColumn = (
   return { cells, colWidths: widths };
 };
 
-const emptyCell = (): TableCell => ({ text: "", fill: null });
+const emptyCell = (): TableCell => ({ text: "", fill: null, color: null });
 
 /** Insert a row, sharing the new row's height out of the existing ones. */
 export const insertRow = (
@@ -680,14 +680,15 @@ export const drawTableOnCanvas = (
       context.rect(xs[col]!, ys[row]!, cellWidth, cellHeight);
       context.clip();
 
-      // A cell painted by the heatmap sets its own ink, so the text stays
-      // legible at both ends of the ramp. `applyDarkModeFilter` is applied to
-      // the fill first, because that is what the cell will actually be.
+      // An explicit cell colour wins. Otherwise a cell painted by the heatmap
+      // picks its own ink so the text stays legible at both ends of the ramp;
+      // `applyDarkModeFilter` is applied to the fill first, because that is
+      // what the cell will actually be.
+      const cell = getCell(element, row, col);
       const fill = cellFill(element, row, col, range);
-      context.fillStyle = inkOn(
-        fill ? applyDarkModeFilter(fill, isDarkMode) : null,
-        ink,
-      );
+      context.fillStyle = cell?.color
+        ? applyDarkModeFilter(cell.color, isDarkMode)
+        : inkOn(fill ? applyDarkModeFilter(fill, isDarkMode) : null, ink);
 
       const isHeader = element.headerRow && row === 0;
       context.font = isHeader
@@ -702,10 +703,13 @@ export const drawTableOnCanvas = (
         if (y > ys[row + 1]!) {
           return;
         }
-        // Numbers right-align, which is how a matrix is read; prose does not.
-        const x = isMatrix
-          ? xs[col + 1]! - CELL_PADDING - context.measureText(line.text).width
-          : xs[col]! + CELL_PADDING;
+        const width = context.measureText(line.text).width;
+        const x =
+          element.textAlign === "right"
+            ? xs[col + 1]! - CELL_PADDING - width
+            : element.textAlign === "center"
+            ? (xs[col]! + xs[col + 1]!) / 2 - width / 2
+            : xs[col]! + CELL_PADDING;
         context.fillText(line.text, x, y);
       });
       context.restore();
