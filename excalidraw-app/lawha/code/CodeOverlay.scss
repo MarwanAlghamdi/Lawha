@@ -1,0 +1,129 @@
+// The code block's controls: a bar under the card, and the source editor.
+//
+// Absolutely positioned inside the editor container, never Radix popover
+// content — a popover wrapper carries a `transform`, which becomes the
+// containing block for anything positioned inside it (invariant 11).
+
+.lw-code {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+
+  &__bar,
+  &__editor {
+    position: absolute;
+    pointer-events: auto;
+    border: 1px solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    background: var(--lw-surface);
+    box-shadow: var(--lw-shadow-popover);
+    color: var(--lw-text);
+  }
+
+  &__bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+
+    button {
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      border-radius: var(--lw-r-sm);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover {
+        background: var(--lw-sunken);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--lw-accent);
+        outline-offset: 1px;
+      }
+    }
+  }
+
+  &__lang {
+    padding-right: 4px;
+    border-right: 1px solid var(--lw-divider);
+    color: var(--lw-text3);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  &__editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(560px, 80vw);
+    padding: 10px;
+  }
+
+  &__editor-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--lw-text2);
+    }
+
+    select {
+      padding: 3px 6px;
+      border: 1px solid var(--lw-border2);
+      border-radius: var(--lw-r-sm);
+      background: var(--lw-surface);
+      color: var(--lw-text);
+      font: inherit;
+    }
+  }
+
+  // Monospace and a dark field, so the editing surface resembles the card it
+  // produces rather than a form input that happens to hold code.
+  &__source {
+    min-height: 200px;
+    max-height: 45vh;
+    padding: 8px 10px;
+    border: 1px solid var(--lw-border2);
+    border-radius: var(--lw-r-sm);
+    background: #1e2128;
+    color: #d7dae0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+      "Liberation Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    tab-size: 2;
+    resize: vertical;
+
+    &:focus-visible {
+      outline: 2px solid var(--lw-accent);
+      outline-offset: 1px;
+    }
+  }
+
+  &__editor-foot {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  &__save {
+    padding: 5px 14px !important;
+    border-color: var(--lw-accent) !important;
+    background: var(--lw-accent) !important;
+    color: #fff !important;
+    font-weight: 600;
+
+    &:hover {
+      background: var(--lw-accent-d) !important;
+    }
+  }
+}

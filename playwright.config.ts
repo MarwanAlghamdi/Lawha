@@ -137,6 +137,24 @@ const twoAccountsProject = {
  * the mechanism that guarantees it now.
  */
 
+/**
+ * Tables, matrices and tensor blocks (ADR 0023).
+ *
+ * Registers accounts and creates boards, so it is kept out of the default run
+ * like the three above — and it must be pointed at a **sandbox** stack with its
+ * own database, never at a real deployment. Long budget: it opens a full editor
+ * for every test and drives real pointer input at desktop coordinates.
+ */
+const gridObjectsProject = {
+  name: "grid-objects",
+  testMatch: /gridObjects\.spec\.ts/,
+  timeout: 180_000,
+  use: {
+    ...devices["Desktop Chrome"],
+    viewport: VIEWPORTS.desktop,
+  },
+};
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
@@ -185,5 +203,6 @@ export default defineConfig({
     openBoardsProject,
     twoAccountsProject,
     inviteCodesProject,
+    gridObjectsProject,
   ],
 });

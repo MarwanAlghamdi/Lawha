@@ -1,0 +1,187 @@
+// Notion-style row and column handles, floating over the canvas.
+//
+// The whole overlay is `position: absolute` inside the editor container and is
+// never Radix popover content. Radix's wrapper carries a `transform`, which
+// becomes the containing block for `position: fixed` descendants — the trap
+// invariant 11 records. Absolute positioning inside a plain ancestor has no
+// such hazard, and it is why the geometry here subtracts the container offsets
+// that `sceneCoordsToViewportCoords` adds.
+
+.lw-table {
+  position: absolute;
+  inset: 0;
+  // The layer itself must not eat canvas events — only the controls in it do.
+  pointer-events: none;
+  // Above the canvas, below the editor's own islands and any open sheet.
+  z-index: 3;
+
+  &__handle {
+    position: absolute;
+    pointer-events: auto;
+    padding: 0;
+    border: 1px solid var(--lw-border2);
+    border-radius: var(--lw-r-xs);
+    background: var(--lw-surface-90);
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+
+    &:hover {
+      background: var(--lw-accent-soft-h);
+      border-color: var(--lw-accent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--lw-accent);
+      outline-offset: 1px;
+    }
+  }
+
+  // Grab-bar affordance: three short lines, oriented with the axis the handle
+  // selects, so a column handle reads as vertical travel and a row handle as
+  // horizontal. Drawn with a gradient rather than child elements to keep the
+  // handle a single focusable node.
+  &__handle--col {
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--lw-dot) 0 2px,
+      transparent 2px 6px
+    );
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 22px 2px;
+  }
+
+  &__handle--row {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--lw-dot) 0 2px,
+      transparent 2px 6px
+    );
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 2px 22px;
+  }
+
+  // The move bar. Wider affordance than the row/column handles because it is
+  // the thing that replaces grouping — dragging it is how a table moves at all.
+  &__move {
+    position: absolute;
+    pointer-events: auto;
+    height: 16px;
+    border: 1px solid var(--lw-border2);
+    border-radius: var(--lw-r-xs);
+    background: var(--lw-surface-90);
+    cursor: grab;
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--lw-dot) 0 2px,
+      transparent 2px 5px
+    );
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 40px 2px;
+
+    &:hover {
+      background-color: var(--lw-accent-soft-h);
+      border-color: var(--lw-accent);
+    }
+
+    &:active {
+      cursor: grabbing;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--lw-accent);
+      outline-offset: 1px;
+    }
+  }
+
+  &__bar {
+    position: absolute;
+    pointer-events: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    max-width: min(560px, 90vw);
+    padding: 6px 8px;
+    border: 1px solid var(--lw-border);
+    border-radius: var(--lw-r-popover);
+    background: var(--lw-surface);
+    box-shadow: var(--lw-shadow-popover);
+    font-size: 12px;
+    color: var(--lw-text);
+
+    button {
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      border-radius: var(--lw-r-sm);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: var(--lw-sunken);
+      }
+
+      &:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--lw-accent);
+        outline-offset: 1px;
+      }
+    }
+  }
+
+  &__danger {
+    color: var(--lw-danger);
+
+    &:hover:not(:disabled) {
+      background: var(--lw-danger-bg) !important;
+    }
+  }
+
+  &__sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 2px 2px;
+    background: var(--lw-divider);
+  }
+
+  &__fills {
+    display: flex;
+    gap: 4px;
+  }
+
+  &__fill {
+    width: 18px;
+    height: 18px;
+    padding: 0 !important;
+    border: 1px solid var(--lw-border2) !important;
+    border-radius: var(--lw-r-xs) !important;
+
+    // "No colour" needs to look like an absence rather than white, which in the
+    // light theme is indistinguishable from an unfilled cell's actual paper.
+    &[data-clear] {
+      background: linear-gradient(
+          to bottom right,
+          transparent calc(50% - 1px),
+          var(--lw-danger) calc(50% - 1px) calc(50% + 1px),
+          transparent calc(50% + 1px)
+        )
+        var(--lw-surface);
+    }
+  }
+
+  &__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+}
