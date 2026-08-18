@@ -42,6 +42,9 @@ import type {
   FontFamilyValues,
   ExcalidrawTextContainer,
   ExcalidrawFrameElement,
+  ExcalidrawTableElement,
+  ExcalidrawTensorElement,
+  ExcalidrawCodeElement,
   ExcalidrawEmbeddableElement,
   ExcalidrawMagicFrameElement,
   ExcalidrawIframeElement,
@@ -183,6 +186,80 @@ export const newIframeElement = (
     ..._newElementBase<ExcalidrawIframeElement>("iframe", opts),
   };
 };
+
+/**
+ * LAWHA: a new table (or matrix).
+ *
+ * Widths and heights are stored as fractions summing to 1, so a fresh table is
+ * simply "n equal columns" and the ordinary bounding-box resize scales it with
+ * no table-specific code. See `ExcalidrawTableElement`.
+ */
+export const newTableElement = (
+  opts: {
+    rows?: number;
+    cols?: number;
+    variant?: ExcalidrawTableElement["variant"];
+    cells?: ExcalidrawTableElement["cells"];
+    headerRow?: boolean;
+  } & ElementConstructorOpts,
+): NonDeleted<ExcalidrawTableElement> => {
+  const rows = Math.max(1, opts.rows ?? 3);
+  const cols = Math.max(1, opts.cols ?? 3);
+  const even = (n: number) => Array.from({ length: n }, () => 1 / n);
+
+  return newElementWith(
+    {
+      ..._newElementBase<ExcalidrawTableElement>("table", opts),
+      type: "table",
+      variant: opts.variant ?? "table",
+      cells:
+        opts.cells ??
+        Array.from({ length: rows }, () =>
+          Array.from({ length: cols }, () => ({ text: "", fill: null })),
+        ),
+      colWidths: even(cols),
+      rowHeights: even(rows),
+      headerRow: opts.headerRow ?? opts.variant !== "matrix",
+    },
+    {},
+  );
+};
+
+/** LAWHA: a new tensor block. One element, however many faces it draws. */
+export const newTensorElement = (
+  opts: {
+    dims?: readonly number[];
+    name?: string | null;
+  } & ElementConstructorOpts,
+): NonDeleted<ExcalidrawTensorElement> =>
+  newElementWith(
+    {
+      ..._newElementBase<ExcalidrawTensorElement>("tensor", opts),
+      type: "tensor",
+      dims: opts.dims?.length ? opts.dims : [64, 32, 32],
+      name: opts.name ?? null,
+    },
+    {},
+  );
+
+/** LAWHA: a new code block. The source is the state; colour is derived. */
+export const newCodeElement = (
+  opts: {
+    source?: string;
+    language?: string;
+    showLineNumbers?: boolean;
+  } & ElementConstructorOpts,
+): NonDeleted<ExcalidrawCodeElement> =>
+  newElementWith(
+    {
+      ..._newElementBase<ExcalidrawCodeElement>("code", opts),
+      type: "code",
+      source: opts.source ?? "",
+      language: opts.language ?? "auto",
+      showLineNumbers: opts.showLineNumbers ?? true,
+    },
+    {},
+  );
 
 export const newFrameElement = (
   opts: {

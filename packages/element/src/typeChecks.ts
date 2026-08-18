@@ -15,6 +15,9 @@ import type {
   ExcalidrawFreeDrawElement,
   InitializedExcalidrawImageElement,
   ExcalidrawImageElement,
+  ExcalidrawTableElement,
+  ExcalidrawTensorElement,
+  ExcalidrawCodeElement,
   ExcalidrawTextElementWithContainer,
   ExcalidrawTextContainer,
   ExcalidrawFrameElement,
@@ -241,6 +244,27 @@ export const isTextBindableContainer = <T extends ExcalidrawElement>(
   );
 };
 
+export const isTableElement = (
+  element: ExcalidrawElement | null,
+): element is ExcalidrawTableElement => element?.type === "table";
+
+export const isTensorElement = (
+  element: ExcalidrawElement | null,
+): element is ExcalidrawTensorElement => element?.type === "tensor";
+
+export const isCodeElement = (
+  element: ExcalidrawElement | null,
+): element is ExcalidrawCodeElement => element?.type === "code";
+
+/** The Lawha types that draw their own interior and take no roughjs shape. */
+export const isLawhaElement = (
+  element: ExcalidrawElement | null,
+): element is
+  | ExcalidrawTableElement
+  | ExcalidrawTensorElement
+  | ExcalidrawCodeElement =>
+  isTableElement(element) || isTensorElement(element) || isCodeElement(element);
+
 export const isExcalidrawElement = (
   element: any,
 ): element is ExcalidrawElement => {
@@ -261,6 +285,9 @@ export const isExcalidrawElement = (
     case "frame":
     case "magicframe":
     case "image":
+    case "table":
+    case "tensor":
+    case "code":
     case "selection": {
       return true;
     }

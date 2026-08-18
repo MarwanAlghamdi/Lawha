@@ -700,6 +700,62 @@ export const restoreElement = (
       return restoreElementWithProperties(element, {
         name: element.name ?? null,
       });
+    // LAWHA: explicit cases rather than leaning on the default below. The
+    // default preserves an element faithfully but normalises nothing
+    // type-specific; these three have invariants worth repairing on load — a
+    // grid whose fraction arrays do not match its cell counts would render
+    // with columns in the wrong places rather than fail loudly.
+    case "table": {
+      const cells = Array.isArray(element.cells) ? element.cells : [[]];
+      const rows = Math.max(1, cells.length);
+      const cols = Math.max(1, cells[0]?.length ?? 1);
+      const normalise = (
+        values: readonly number[] | undefined,
+        count: number,
+      ) => {
+        const usable =
+          Array.isArray(values) &&
+          values.length === count &&
+          values.every((n) => typeof n === "number" && n > 0);
+        if (!usable) {
+          return Array.from({ length: count }, () => 1 / count);
+        }
+        // Re-normalise rather than trust the sum: a file hand-edited, or
+        // written by a build with a different rounding, should still lay out.
+        const total = values.reduce((sum, n) => sum + n, 0);
+        return values.map((n) => n / total);
+      };
+
+      return restoreElementWithProperties(element, {
+        variant: element.variant === "matrix" ? "matrix" : "table",
+        cells: cells.map((row) =>
+          Array.from({ length: cols }, (_, col) => ({
+            text: typeof row?.[col]?.text === "string" ? row[col]!.text : "",
+            fill: typeof row?.[col]?.fill === "string" ? row[col]!.fill : null,
+          })),
+        ),
+        colWidths: normalise(element.colWidths, cols),
+        rowHeights: normalise(element.rowHeights, rows),
+        headerRow: element.headerRow !== false,
+      });
+    }
+    case "tensor":
+      return restoreElementWithProperties(element, {
+        dims:
+          Array.isArray(element.dims) &&
+          element.dims.length > 0 &&
+          element.dims.every((n) => typeof n === "number" && n > 0)
+            ? element.dims
+            : [64, 32, 32],
+        name: typeof element.name === "string" ? element.name : null,
+      });
+    case "code":
+      return restoreElementWithProperties(element, {
+        source: typeof element.source === "string" ? element.source : "",
+        language:
+          typeof element.language === "string" ? element.language : "auto",
+        showLineNumbers: element.showLineNumbers !== false,
+      });
 
     // LAWHA: a type this build does not recognise is KEPT, not dropped.
     //
@@ -728,7 +784,7 @@ export const restoreElement = (
     // and `staticSvgScene.ts`.
     default:
       return restoreElementWithProperties(
-        element as Extract<ExcalidrawElement, { type: "rectangle" }>,
+        element as unknown as Extract<ExcalidrawElement, { type: "rectangle" }>,
         {},
       );
   }

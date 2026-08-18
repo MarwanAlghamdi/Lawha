@@ -183,6 +183,75 @@ export type ExcalidrawGenericElement =
   | ExcalidrawDiamondElement
   | ExcalidrawEllipseElement;
 
+/**
+ * LAWHA: a table, and its numeric sibling a matrix.
+ *
+ * One element owning a whole grid, rather than a pile of rectangles held
+ * together by an overlay. That is the entire point: the editor can then resize
+ * a column, reorder a row, undo the lot in one step and reconcile it as a
+ * single unit, because there is one thing to reason about.
+ *
+ * **Column widths and row heights are fractions, not pixels.** Each array sums
+ * to 1 and is multiplied by `width`/`height` at draw time. This is what makes
+ * the ordinary bounding-box resize work with no table-specific code in
+ * `resizeElements.ts`, and it is why a column drag cannot make cells overlap:
+ * the drag moves weight between two neighbours and the total is always 1.
+ */
+export type ExcalidrawTableElement = _ExcalidrawElementBase &
+  Readonly<{
+    type: "table";
+    /** `matrix` renders numerically and may carry a heatmap. */
+    variant: "table" | "matrix";
+    /** Row-major cell contents. `cells[row][col]`. */
+    cells: readonly (readonly TableCell[])[];
+    /** Per-column width as a fraction of `width`. Sums to 1. */
+    colWidths: readonly number[];
+    /** Per-row height as a fraction of `height`. Sums to 1. */
+    rowHeights: readonly number[];
+    /** Whether row 0 is styled as a header. */
+    headerRow: boolean;
+  }>;
+
+export type TableCell = {
+  text: string;
+  /** Cell background. `null` inherits the element's `backgroundColor`. */
+  fill: string | null;
+};
+
+/**
+ * LAWHA: a tensor block — a labelled 2-D rectangle or an isometric 3-D box.
+ *
+ * One element, not three planes and three texts grouped together. The faces
+ * and the dimension labels are drawn from `dims`; they are not separate
+ * objects that happen to sit near each other, so the block moves, resizes,
+ * rotates and undoes as the single thing it looks like.
+ */
+export type ExcalidrawTensorElement = _ExcalidrawElementBase &
+  Readonly<{
+    type: "tensor";
+    /** `[rows, cols]` draws a flat block; `[depth, height, width]` an isometric one. */
+    dims: readonly number[];
+    /** Optional name drawn on the front face. */
+    name: string | null;
+  }>;
+
+/**
+ * LAWHA: a syntax-highlighted code block.
+ *
+ * The source is the element's own state and the colours are derived from it at
+ * draw time. An Excalidraw text element carries a single `strokeColor`, so
+ * coloured code cannot be text — but a renderer with a raw 2D context can set
+ * `fillStyle` per token, which is what this type exists to allow.
+ */
+export type ExcalidrawCodeElement = _ExcalidrawElementBase &
+  Readonly<{
+    type: "code";
+    source: string;
+    /** A highlight.js language id, or `auto` to detect on every render. */
+    language: string;
+    showLineNumbers: boolean;
+  }>;
+
 export type ExcalidrawFlowchartNodeElement =
   | ExcalidrawRectangleElement
   | ExcalidrawDiamondElement
@@ -190,6 +259,9 @@ export type ExcalidrawFlowchartNodeElement =
 
 export type ExcalidrawRectanguloidElement =
   | ExcalidrawRectangleElement
+  | ExcalidrawTableElement
+  | ExcalidrawTensorElement
+  | ExcalidrawCodeElement
   | ExcalidrawImageElement
   | ExcalidrawTextElement
   | ExcalidrawFreeDrawElement
@@ -213,7 +285,10 @@ export type ExcalidrawElement =
   | ExcalidrawFrameElement
   | ExcalidrawMagicFrameElement
   | ExcalidrawIframeElement
-  | ExcalidrawEmbeddableElement;
+  | ExcalidrawEmbeddableElement
+  | ExcalidrawTableElement
+  | ExcalidrawTensorElement
+  | ExcalidrawCodeElement;
 
 export type ExcalidrawNonSelectionElement = Exclude<
   ExcalidrawElement,

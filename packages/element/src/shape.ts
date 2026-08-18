@@ -981,7 +981,13 @@ const _generateElementShape = (
     case "frame":
     case "magicframe":
     case "text":
-    case "image": {
+    case "image":
+    case "table":
+    case "tensor":
+    case "code": {
+      // The Lawha types join this group for the same reason text and image are
+      // in it: they draw themselves imperatively in `drawElementOnCanvas`, so
+      // there is no roughjs shape to generate.
       const shape: ElementShapes[typeof element.type] = null;
       // we return (and cache) `null` to make sure we don't regenerate
       // `element.canvas` on rerenders
@@ -1116,11 +1122,11 @@ export const getElementShape = <Point extends GlobalPoint | LocalPoint>(
       );
     }
 
-    // LAWHA: a type this build does not know still has a bounding box, so hit
-    // detection degrades to "it is a rectangle" rather than returning
-    // undefined. Without this the switch falls off the end and every caller —
-    // selection, lasso, arrow binding — silently misbehaves around an element
-    // it can see on the canvas.
+    // LAWHA: the table/tensor/code types, and any type a future build adds,
+    // are all rectangular as far as hit detection is concerned. Falling
+    // through to the polygon shape keeps selection, lasso and arrow binding
+    // working around them; without a default the switch falls off the end and
+    // every caller silently misbehaves around an element it can see.
     default:
       return getPolygonShape(element);
   }

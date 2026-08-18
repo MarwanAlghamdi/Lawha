@@ -49,6 +49,9 @@ import type {
   ExcalidrawImageElement,
   ExcalidrawLinearElement,
   ExcalidrawRectangleElement,
+  ExcalidrawTableElement,
+  ExcalidrawTensorElement,
+  ExcalidrawCodeElement,
   ExcalidrawSelectionElement,
   ExcalidrawTextElement,
 } from "@excalidraw/element/types";
@@ -104,6 +107,9 @@ export type GeometricShape<Point extends GlobalPoint | LocalPoint> =
 
 type RectangularElement =
   | ExcalidrawRectangleElement
+  | ExcalidrawTableElement
+  | ExcalidrawTensorElement
+  | ExcalidrawCodeElement
   | ExcalidrawDiamondElement
   | ExcalidrawFrameLikeElement
   | ExcalidrawEmbeddableElement

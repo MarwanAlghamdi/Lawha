@@ -171,6 +171,11 @@ export type ElementShapes = {
   line: Drawable[];
   text: null;
   image: null;
+  // LAWHA: these draw their own interior with a raw 2D context, so there is no
+  // roughjs shape to generate. `null` is a cached value meaning exactly that.
+  table: null;
+  tensor: null;
+  code: null;
   frame: null;
   magicframe: null;
 };
