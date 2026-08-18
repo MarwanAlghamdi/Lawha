@@ -2597,3 +2597,119 @@ export const CodeToolIcon = createIcon(
   </g>,
   tablerIconProps,
 );
+
+// LAWHA: controls for the table / matrix / tensor / code properties panel.
+// Same 24-box, same 1.5 stroke, same tabler props as everything above, so a
+// panel row of these sits level with the stroke-width and sloppiness rows.
+
+export const TableHeaderOnIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M9 10v9M15 10v9" />
+    <path d="M3.5 7.5h17" strokeWidth="3" opacity="0.9" />
+  </g>,
+  tablerIconProps,
+);
+
+export const TableHeaderOffIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M3 14.5h18M9 5v14M15 5v14" />
+  </g>,
+  tablerIconProps,
+);
+
+export const TableDeleteRowIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M3 14.5h18" />
+    <path d="M8 12.25h8" strokeWidth="2.5" />
+  </g>,
+  tablerIconProps,
+);
+
+export const TableDeleteColumnIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M9 5v14M15 5v14" />
+    <path d="M12 8v8" strokeWidth="2.5" />
+  </g>,
+  tablerIconProps,
+);
+
+export const MatrixBracketsOnIcon = createIcon(
+  <g strokeWidth="1.5">
+    <path d="M8 4H5v16h3M16 4h3v16h-3" />
+    <path d="M10 9h4M10 15h4" />
+  </g>,
+  tablerIconProps,
+);
+
+export const MatrixBracketsOffIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="4" y="5" width="16" height="14" rx="1.5" />
+    <path d="M10 9h4M10 15h4" />
+  </g>,
+  tablerIconProps,
+);
+
+export const MatrixIndicesIcon = createIcon(
+  <g strokeWidth="1.5">
+    <path d="M9 8.5h11v11H9z" />
+    <path d="M13.5 8.5v11M9 14h11" />
+    <path d="M5.5 4.5v3M4.5 5.5h1M11 4h.01M16 4h.01M5 11h.01M5 16h.01" />
+  </g>,
+  tablerIconProps,
+);
+
+export const MatrixHeatmapIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M3 10h18M3 14.5h18M9 5v14M15 5v14" />
+    <rect
+      x="3.2"
+      y="5.2"
+      width="5.6"
+      height="4.6"
+      fill="currentColor"
+      stroke="none"
+      opacity="0.85"
+    />
+    <rect
+      x="9.2"
+      y="10.2"
+      width="5.6"
+      height="4.1"
+      fill="currentColor"
+      stroke="none"
+      opacity="0.45"
+    />
+    <rect
+      x="15.2"
+      y="14.7"
+      width="5.6"
+      height="4.1"
+      fill="currentColor"
+      stroke="none"
+      opacity="0.2"
+    />
+  </g>,
+  tablerIconProps,
+);
+
+export const CodeLineNumbersOnIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M8 4v16" />
+    <path d="M11 8.5h7M11 12h5M11 15.5h6" />
+  </g>,
+  tablerIconProps,
+);
+
+export const CodeLineNumbersOffIcon = createIcon(
+  <g strokeWidth="1.5">
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <path d="M6.5 8.5h11M6.5 12h8M6.5 15.5h9" />
+  </g>,
+  tablerIconProps,
+);

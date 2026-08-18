@@ -161,10 +161,6 @@ export const SelectedShapeActions = ({
       )}
       {predicates.fill && renderAction("changeFillStyle")}
 
-      {/* LAWHA: table, tensor and code properties. One line here; the panel
-          itself lives in its own file so a merge never has to read it. */}
-      <LawhaElementActions app={app} targetElements={targetElements} />
-
       {predicates.strokeWidth && renderAction("changeStrokeWidth")}
 
       {predicates.strokeStyle && <>{renderAction("changeStrokeStyle")}</>}
@@ -187,6 +183,12 @@ export const SelectedShapeActions = ({
 
       {predicates.verticalAlign && renderAction("changeVerticalAlign")}
       {predicates.arrowheads && <>{renderAction("changeArrowhead")}</>}
+
+      {/* LAWHA: table, tensor and code properties. After the stroke group,
+          where every other type-specific group sits — spliced into the middle
+          of it, the panel reordered controls people already know. One line
+          here; the panel lives in its own file so a merge never reads it. */}
+      <LawhaElementActions app={app} targetElements={targetElements} />
 
       {predicates.opacity && renderAction("changeOpacity")}
 
@@ -630,6 +632,11 @@ export const CompactShapeActions = ({
           {renderAction("changeStrokeColor")}
         </div>
       )}
+
+      {/* LAWHA: the grid-object properties. Without this the compact panel —
+          which is what tablets and compact desktop get — never mounted them,
+          so a table was unconfigurable on anything but a wide desktop. */}
+      <LawhaElementActions app={app} targetElements={targetElements} />
 
       {/* Background Color */}
       {predicates.backgroundColor && (
