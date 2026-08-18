@@ -157,6 +157,11 @@ import {
   getAnchorUnderCursor,
   getCellUnderCursor,
   getDividerUnderCursor,
+  getPlusUnderCursor,
+  insertRow,
+  insertColumn,
+  tableRowCount,
+  tableColCount,
   isEmbeddableElement,
   isInitializedImageElement,
   isLinearElement,
@@ -10801,10 +10806,42 @@ class App extends React.Component<AppProps, AppState> {
       pointerDownState.origin.y,
     );
 
-    const divider = getDividerUnderCursor(element, elementsMap, origin, zoom);
+    // The add-a-row / add-a-column buttons win outright: they sit outside the
+    // grid at the trailing edge, where nothing else claims a pixel.
+    const plus = getPlusUnderCursor(
+      element,
+      elementsMap,
+      origin,
+      zoom,
+      event.pointerType,
+    );
+    if (plus) {
+      this.store.scheduleCapture();
+      this.scene.mutateElement(
+        element,
+        plus === "row"
+          ? insertRow(element, tableRowCount(element))
+          : insertColumn(element, tableColCount(element)),
+      );
+      return true;
+    }
+
+    const divider = getDividerUnderCursor(
+      element,
+      elementsMap,
+      origin,
+      zoom,
+      event.pointerType,
+    );
     let anchor = divider
       ? null
-      : getAnchorUnderCursor(element, elementsMap, origin, zoom);
+      : getAnchorUnderCursor(
+          element,
+          elementsMap,
+          origin,
+          zoom,
+          event.pointerType,
+        );
 
     // Dividers are strictly interior and collide with nothing, so they win
     // outright. Anchors sit just *outside* the table, where the `n`, `w` and
@@ -10998,12 +11035,21 @@ class App extends React.Component<AppProps, AppState> {
       return;
     }
 
-    const divider = getDividerUnderCursor(
-      element,
-      this.scene.getNonDeletedElementsMap(),
-      pointFrom<GlobalPoint>(scenePointer.x, scenePointer.y),
-      this.state.zoom.value,
-    );
+    const elementsMap = this.scene.getNonDeletedElementsMap();
+    const pointer = pointFrom<GlobalPoint>(scenePointer.x, scenePointer.y);
+    const zoom = this.state.zoom.value;
+
+    const divider = getDividerUnderCursor(element, elementsMap, pointer, zoom);
+    // Hover covers the element and the band its chrome occupies, so moving
+    // from a cell to the anchor above it does not make the anchor vanish
+    // out from under the pointer.
+    const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
+    const slack = 34 / zoom;
+    const isHovered =
+      scenePointer.x >= x1 - slack &&
+      scenePointer.x <= x2 + slack &&
+      scenePointer.y >= y1 - slack &&
+      scenePointer.y <= y2 + slack;
 
     if (divider) {
       this.cursor.set(
@@ -11011,6 +11057,12 @@ class App extends React.Component<AppProps, AppState> {
           ? CURSOR_TYPE.COL_RESIZE
           : CURSOR_TYPE.ROW_RESIZE,
       );
+    } else if (
+      isHovered &&
+      (getPlusUnderCursor(element, elementsMap, pointer, zoom) ||
+        getAnchorUnderCursor(element, elementsMap, pointer, zoom))
+    ) {
+      this.cursor.set(CURSOR_TYPE.POINTER);
     }
 
     this.setState((prevState) => {
@@ -11020,13 +11072,18 @@ class App extends React.Component<AppProps, AppState> {
           : emptyTableEditor(element.id);
       const same =
         previous.hoveredDivider?.axis === divider?.axis &&
-        previous.hoveredDivider?.index === divider?.index;
+        previous.hoveredDivider?.index === divider?.index &&
+        previous.isHovered === isHovered;
 
       if (same && prevState.editingTableElement) {
         return null;
       }
       return {
-        editingTableElement: { ...previous, hoveredDivider: divider },
+        editingTableElement: {
+          ...previous,
+          hoveredDivider: divider,
+          isHovered,
+        },
       };
     });
   };

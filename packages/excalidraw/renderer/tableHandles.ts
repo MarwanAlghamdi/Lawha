@@ -1,42 +1,52 @@
+import { DEFAULT_TRANSFORM_HANDLE_SPACING } from "@excalidraw/common";
 import {
-  ANCHOR_PX,
-  columnOffsets,
+  ANCHOR_THICKNESS,
+  anchorStrip,
   getCellRect,
-  getElementAbsoluteCoords,
-  rowOffsets,
+  gridLines,
+  plusButtons,
   tableColCount,
   tableRowCount,
 } from "@excalidraw/element";
+import { getElementAbsoluteCoords } from "@excalidraw/element";
 
 import type {
   ElementsMap,
   ExcalidrawTableElement,
 } from "@excalidraw/element/types";
 
+import { roundRect } from "./roundRect";
+
 import type { InteractiveCanvasAppState } from "../types";
 import type { InteractiveCanvasRenderConfig } from "../scene/types";
 
 /**
- * LAWHA: the interior chrome of a table — row/column anchors, the divider
- * being dragged, the bulk selection, and the active cell.
+ * LAWHA: the interior chrome of a table — row and column anchors, the divider
+ * being dragged, the bulk selection, the active cell, and the hover-revealed
+ * buttons that add a row or column.
  *
  * Kept out of `interactiveScene.ts` so that file gains an import and one call
- * rather than a hundred lines: `packages/` is upstream, and the cheapest
- * change there is the one a merge never has to look at.
+ * rather than two hundred lines: `packages/` is upstream, and the cheapest
+ * change there is the one a merge never has to read.
  *
- * Everything is drawn in Excalidraw's own visual language — `selectionColor`,
- * `1 / zoom` strokes, white-filled handles — because canvas chrome that
- * invents its own aesthetic reads as a bug rather than as a feature.
+ * Every rule below comes from what upstream already does, not from taste:
+ * `1 / zoom` strokes, white-filled handles with a `selectionColor` border at
+ * full opacity, `2 / zoom` corner radii, an explicit `setLineDash` at every
+ * stroke site, and a `|| "#000"` colour fallback because `getPropertyValue`
+ * returns `""` before the container is styled and assigning `""` to
+ * `strokeStyle` is a silent no-op.
+ *
+ * One deliberate divergence, and it is worth naming. Upstream's transform
+ * handles do NOT rotate — `generateTransformHandle` rotates only the handle's
+ * centre and returns an axis-aligned box — because they are points, and a
+ * point has no orientation to lose. An anchor is not a point: it spans the
+ * column it addresses, so an axis-aligned strip over a rotated table would
+ * detach from the column it names. These rotate with the element, like the
+ * binding highlight does.
  */
 
-/** Gap between the table's edge and its anchor strip, in screen pixels. */
-const ANCHOR_GAP_PX = 2;
-
-/** Alpha for an idle anchor. Selected anchors are drawn fully opaque. */
-const ANCHOR_IDLE_ALPHA = 0.22;
-
 /** Alpha for the wash over a bulk-selected row or column. */
-const BULK_FILL_ALPHA = 0.12;
+const BULK_FILL_ALPHA = 0.1;
 
 export const renderTableHandles = (
   context: CanvasRenderingContext2D,
@@ -45,148 +55,171 @@ export const renderTableHandles = (
   element: ExcalidrawTableElement,
   elementsMap: ElementsMap,
 ): void => {
-  const editor = appState.editingTableElement;
+  // Upstream hides transform handles for a locked element so the lock reads as
+  // a lock. Interior handles that stayed would say the opposite.
+  if (element.locked) {
+    return;
+  }
+
+  const editor =
+    appState.editingTableElement?.elementId === element.id
+      ? appState.editingTableElement
+      : null;
   const zoom = appState.zoom.value;
   const [, , , , cx, cy] = getElementAbsoluteCoords(element, elementsMap);
-
-  const strip = ANCHOR_PX / zoom;
-  const gap = ANCHOR_GAP_PX / zoom;
+  const color = renderConfig.selectionColor || "#000";
   const radius = 2 / zoom;
-  const color = renderConfig.selectionColor;
 
-  const xs = columnOffsets(element);
-  const ys = rowOffsets(element);
+  const { xs, ys } = gridLines(element);
   const cols = tableColCount(element);
   const rows = tableRowCount(element);
-
-  const selection = editor?.elementId === element.id ? editor.selection : null;
+  const selection = editor?.selection ?? null;
   const isSelected = (axis: "col" | "row", index: number) =>
     selection?.axis === axis && selection.indices.includes(index);
 
+  // Anchors and the add buttons are revealed by hovering the element, the way
+  // Notion reveals its grips — a table at rest should look like a table, not
+  // like a table wearing equipment.
+  const revealed = editor?.isHovered === true || selection !== null;
+
   context.save();
-  // Draw in the element's own unrotated frame, so a rotated table keeps its
-  // anchors welded to its edges instead of floating beside them.
+  // Element-local frame, so a rotated table keeps its chrome welded to it.
   context.translate(cx, cy);
   context.rotate(element.angle);
   context.translate(-cx, -cy);
   context.translate(element.x, element.y);
 
   context.lineWidth = 1 / zoom;
+  context.setLineDash([]);
 
-  // The wash over a bulk selection, drawn first so the grid lines stay legible
-  // through it.
+  // The wash over a bulk selection, drawn first so the rules stay legible
+  // through it. 0.1 is in upstream's existing alpha vocabulary; the 0.12 this
+  // used to be was invented.
   if (selection) {
-    context.globalAlpha = BULK_FILL_ALPHA;
+    context.save();
+    context.globalAlpha *= BULK_FILL_ALPHA;
     context.fillStyle = color;
     for (const index of selection.indices) {
       if (selection.axis === "col" && index < cols) {
         context.fillRect(
           xs[index]!,
-          0,
+          ys[0]!,
           xs[index + 1]! - xs[index]!,
-          element.height,
+          ys[ys.length - 1]! - ys[0]!,
         );
       } else if (selection.axis === "row" && index < rows) {
         context.fillRect(
-          0,
+          xs[0]!,
           ys[index]!,
-          element.width,
+          xs[xs.length - 1]! - xs[0]!,
           ys[index + 1]! - ys[index]!,
         );
       }
     }
-    context.globalAlpha = 1;
+    context.restore();
   }
 
-  // Column anchors, above the table; row anchors, to its left. Both sit where
-  // a reader already looks for them, and off the cells they address.
-  const drawAnchor = (
+  const drawHandle = (
     x: number,
     y: number,
     width: number,
     height: number,
     selected: boolean,
   ) => {
-    context.globalAlpha = selected ? 1 : ANCHOR_IDLE_ALPHA;
-    context.fillStyle = color;
-    context.strokeStyle = "transparent";
-    roundRectPath(context, x, y, width, height, radius);
-    context.fill();
-    context.globalAlpha = 1;
+    // Upstream's handle: white fill, `selectionColor` border, full opacity.
+    context.fillStyle = selected ? color : "#fff";
+    context.strokeStyle = color;
+    roundRect(context, x, y, width, height, radius, color);
   };
 
-  for (let i = 0; i < cols; i++) {
-    const width = xs[i + 1]! - xs[i]! - gap;
-    if (width > 0) {
-      drawAnchor(xs[i]!, -gap - strip, width, strip, isSelected("col", i));
+  if (revealed) {
+    for (let i = 0; i < cols; i++) {
+      const strip = anchorStrip(element, "col", i, zoom, "mouse");
+      if (strip) {
+        drawHandle(
+          strip.x,
+          strip.y,
+          strip.width,
+          strip.height,
+          isSelected("col", i),
+        );
+      }
     }
-  }
-  for (let i = 0; i < rows; i++) {
-    const height = ys[i + 1]! - ys[i]! - gap;
-    if (height > 0) {
-      drawAnchor(-gap - strip, ys[i]!, strip, height, isSelected("row", i));
+    for (let i = 0; i < rows; i++) {
+      const strip = anchorStrip(element, "row", i, zoom, "mouse");
+      if (strip) {
+        drawHandle(
+          strip.x,
+          strip.y,
+          strip.width,
+          strip.height,
+          isSelected("row", i),
+        );
+      }
+    }
+
+    // The add-a-row and add-a-column buttons, at the trailing edge where you
+    // are already looking when you run out of grid — Notion's move, and the
+    // reason nobody goes to a side panel to add a row.
+    const size = ANCHOR_THICKNESS / zoom;
+    for (const button of plusButtons(element, zoom, "mouse")) {
+      drawHandle(button.x, button.y, button.width, button.height, false);
+      context.strokeStyle = color;
+      context.beginPath();
+      const midX = button.x + button.width / 2;
+      const midY = button.y + button.height / 2;
+      const arm = size * 0.28;
+      context.moveTo(midX - arm, midY);
+      context.lineTo(midX + arm, midY);
+      context.moveTo(midX, midY - arm);
+      context.lineTo(midX, midY + arm);
+      context.stroke();
     }
   }
 
-  // The divider under the cursor, or the one being dragged. Only ever one, and
-  // only while it is relevant — a table permanently outlined in accent colour
-  // is noise.
-  const divider =
-    editor?.elementId === element.id
-      ? editor.draggingDivider ?? editor.hoveredDivider
-      : null;
+  // The divider under the cursor, or the one being dragged. Only one, and only
+  // while it is relevant — a table permanently outlined in accent colour is
+  // noise. Dashed while hovering, solid while dragging, so the two states are
+  // distinguishable without colour.
+  const dragging = editor?.draggingDivider ?? null;
+  const divider = dragging ?? editor?.hoveredDivider ?? null;
 
   if (divider) {
+    context.save();
     context.strokeStyle = color;
-    context.lineWidth = 2 / zoom;
+    context.setLineDash(dragging ? [] : [6 / zoom, 4 / zoom]);
     context.beginPath();
     if (divider.axis === "col") {
       const x = xs[divider.index + 1] ?? 0;
-      context.moveTo(x, -gap - strip);
-      context.lineTo(x, element.height);
+      context.moveTo(x, ys[0]!);
+      context.lineTo(x, ys[ys.length - 1]!);
     } else {
       const y = ys[divider.index + 1] ?? 0;
-      context.moveTo(-gap - strip, y);
-      context.lineTo(element.width, y);
+      context.moveTo(xs[0]!, y);
+      context.lineTo(xs[xs.length - 1]!, y);
     }
     context.stroke();
-    context.lineWidth = 1 / zoom;
+    context.restore();
   }
 
-  // The cell being edited.
-  if (editor?.elementId === element.id && editor.activeCell) {
+  // The cell being edited. Matches `renderTextBox`, which is upstream's box
+  // around the text sub-region of an element: 1/zoom, dashed, half alpha.
+  if (editor?.activeCell) {
     const rect = getCellRect(
       element,
       editor.activeCell.row,
       editor.activeCell.col,
     );
+    context.save();
+    context.globalAlpha *= 0.5;
     context.strokeStyle = color;
-    context.lineWidth = 1.5 / zoom;
+    context.setLineDash([6 / zoom, 4 / zoom]);
     context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    context.restore();
   }
 
   context.restore();
 };
 
-/** `roundRect` without the implicit fill/stroke, so callers control paint. */
-const roundRectPath = (
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radius: number,
-) => {
-  const r = Math.min(radius, width / 2, height / 2);
-  context.beginPath();
-  context.moveTo(x + r, y);
-  context.lineTo(x + width - r, y);
-  context.quadraticCurveTo(x + width, y, x + width, y + r);
-  context.lineTo(x + width, y + height - r);
-  context.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
-  context.lineTo(x + r, y + height);
-  context.quadraticCurveTo(x, y + height, x, y + height - r);
-  context.lineTo(x, y + r);
-  context.quadraticCurveTo(x, y, x + r, y);
-  context.closePath();
-};
+/** Re-exported so `interactiveScene` need not know the spacing constant. */
+export const TABLE_CHROME_SPACING = DEFAULT_TRANSFORM_HANDLE_SPACING;

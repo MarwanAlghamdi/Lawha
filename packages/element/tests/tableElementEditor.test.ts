@@ -9,8 +9,12 @@ import {
   applyAnchorDrop,
   applyDividerDrag,
   dropTargetForAnchor,
+  anchorStrip,
+  ANCHOR_SIZES,
   getAnchorUnderCursor,
   getCellUnderCursor,
+  getPlusUnderCursor,
+  plusButtons,
   getDividerUnderCursor,
   nextCell,
   selectedCells,
@@ -251,5 +255,96 @@ describe("the resize invariant, end to end", () => {
       expect(widths.every((w) => w > 0)).toBe(true);
       expect(sum(widths)).toBeCloseTo(1, 10);
     }
+  });
+});
+
+describe("anchor geometry", () => {
+  /**
+   * These pin the defect that made the anchors unusable: the strip started at
+   * `DEFAULT_TRANSFORM_HANDLE_SPACING` — the very offset the transform handles
+   * are placed at — so the corner handles were drawn on top of the first and
+   * last anchors, and on touch a 12px anchor sat beside a 28px handle.
+   */
+  it("clears the band the selection border and transform handles occupy", () => {
+    const t = table();
+    const strip = anchorStrip(t, "col", 1, 1, "mouse")!;
+    // `renderSelectionBorder` draws at DEFAULT_TRANSFORM_HANDLE_SPACING * 2 = 4
+    // outside the element; the strip must start beyond that.
+    expect(strip.y + strip.height).toBeLessThanOrEqual(-4);
+  });
+
+  it("insets the first and last anchors clear of the corner handles", () => {
+    const t = table();
+    const first = anchorStrip(t, "col", 0, 1, "mouse")!;
+    const middle = anchorStrip(t, "col", 1, 1, "mouse")!;
+    expect(first.x).toBeGreaterThan(0);
+    // the middle anchor needs no inset — nothing collides with it
+    expect(middle.x).toBe(100);
+  });
+
+  it("sizes the target by pointer type, as transform handles do", () => {
+    const t = table();
+    const mouse = anchorStrip(t, "col", 1, 1, "mouse")!;
+    const touch = anchorStrip(t, "col", 1, 1, "touch")!;
+    expect(touch.height).toBe(ANCHOR_SIZES.touch);
+    expect(touch.height).toBeGreaterThan(mouse.height);
+  });
+
+  it("keeps a constant on-screen size at any zoom", () => {
+    const t = table();
+    const at1 = anchorStrip(t, "col", 1, 1, "mouse")!;
+    const at4 = anchorStrip(t, "col", 1, 4, "mouse")!;
+    expect(at4.height * 4).toBeCloseTo(at1.height, 10);
+  });
+
+  it("drops an anchor for a column too narrow to be a target", () => {
+    const t = table({ cols: 3 });
+    // Middle columns carry no corner inset, so this isolates the width floor:
+    // 1% of a 300-wide table is 3px, below half a 10px mouse target.
+    const squeezed = { ...t, colWidths: [0.9, 0.01, 0.09] } as typeof t;
+    expect(anchorStrip(squeezed, "col", 1, 1, "mouse")).toBeNull();
+
+    // 8% is 24px — comfortably a target, and it keeps its anchor.
+    const roomy = { ...t, colWidths: [0.9, 0.08, 0.02] } as typeof t;
+    expect(anchorStrip(roomy, "col", 1, 1, "mouse")).not.toBeNull();
+  });
+
+  it("hit-tests against the geometry it draws", () => {
+    const t = table();
+    const strip = anchorStrip(t, "col", 1, 1, "mouse")!;
+    const centre = at(
+      t.x + strip.x + strip.width / 2,
+      t.y + strip.y + strip.height / 2,
+    );
+    expect(getAnchorUnderCursor(t, map, centre, 1)).toEqual({
+      axis: "col",
+      index: 1,
+    });
+  });
+});
+
+describe("add-row and add-column buttons", () => {
+  it("sits at the trailing edge of each axis", () => {
+    const t = table();
+    const [addCol, addRow] = plusButtons(t, 1, "mouse");
+    expect(addCol!.axis).toBe("col");
+    expect(addCol!.x).toBeGreaterThan(t.width - 1);
+    expect(addRow!.axis).toBe("row");
+    expect(addRow!.y).toBeGreaterThan(t.height - 1);
+  });
+
+  it("is hit-testable where it is drawn", () => {
+    const t = table();
+    const [addCol] = plusButtons(t, 1, "mouse");
+    const centre = at(
+      t.x + addCol!.x + addCol!.width / 2,
+      t.y + addCol!.y + addCol!.height / 2,
+    );
+    expect(getPlusUnderCursor(t, map, centre, 1)).toBe("col");
+  });
+
+  it("does not claim a pixel inside the grid", () => {
+    const t = table();
+    expect(getPlusUnderCursor(t, map, at(t.x + 50, t.y + 50), 1)).toBeNull();
   });
 });

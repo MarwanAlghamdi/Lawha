@@ -6,6 +6,7 @@ import { getElementAbsoluteCoords } from "./bounds";
 import {
   columnOffsets,
   getCellAt,
+  gridLines,
   moveColumn,
   moveRow,
   resizeColumn,
@@ -38,8 +39,38 @@ import type { ElementsMap } from "./types";
 /** Half-width of a divider's grab zone, in screen pixels. */
 export const DIVIDER_HIT_PX = 5;
 
-/** Thickness of an anchor strip, in screen pixels. */
-export const ANCHOR_PX = 12;
+/**
+ * Anchor thickness in SCREEN pixels, by pointer type.
+ *
+ * The same ladder `transformHandleSizes` uses, for the same reason: a finger
+ * is not a mouse pointer. A constant 12 here — which is what this was — put a
+ * 12px target next to a 28px transform handle on touch.
+ */
+export const ANCHOR_SIZES: Record<string, number> = {
+  mouse: 10,
+  pen: 16,
+  touch: 28,
+};
+
+/** Default thickness, for the renderer, which does not know the pointer. */
+export const ANCHOR_THICKNESS = ANCHOR_SIZES.mouse!;
+
+/**
+ * Gap between the element's edge and the anchor strip, in screen pixels.
+ *
+ * Must clear the selection border, which `renderSelectionBorder` draws at
+ * `DEFAULT_TRANSFORM_HANDLE_SPACING * 2 = 4`. The previous value was 2 —
+ * identical to `DEFAULT_TRANSFORM_HANDLE_SPACING` — so the strip started
+ * inside the transform-handle band and the corner handles landed on top of it.
+ */
+const ANCHOR_GAP_PX = 5;
+
+/**
+ * How far along the edge the first and last anchors are inset, in screen
+ * pixels, so they clear the corner transform handles rather than sitting under
+ * them. Only the ends need it; a middle column collides with nothing.
+ */
+const CORNER_CLEARANCE_PX = 9;
 
 export type Axis = "col" | "row";
 
@@ -54,6 +85,13 @@ export interface TableAnchor {
   index: number;
 }
 
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface TableEditorState {
   elementId: string;
   /** The cell being edited, if any. */
@@ -64,6 +102,14 @@ export interface TableEditorState {
   draggingAnchor: (TableAnchor & { to: number }) | null;
   /** Rows or columns selected in bulk by clicking an anchor. */
   selection: { axis: Axis; indices: readonly number[] } | null;
+  /**
+   * Whether the pointer is over the element.
+   *
+   * Anchors and the add buttons are revealed by hover rather than drawn
+   * permanently — a table at rest should look like a table, not like a table
+   * wearing equipment. Notion does the same.
+   */
+  isHovered: boolean;
 }
 
 export const emptyTableEditor = (elementId: string): TableEditorState => ({
@@ -73,6 +119,7 @@ export const emptyTableEditor = (elementId: string): TableEditorState => ({
   draggingDivider: null,
   draggingAnchor: null,
   selection: null,
+  isHovered: false,
 });
 
 /**
@@ -95,6 +142,105 @@ export const toLocal = (
   );
   return pointFrom(x - element.x, y - element.y) as LocalPoint;
 };
+
+/**
+ * One anchor's box in element-local units, or null when the column is too
+ * narrow to carry a usable target.
+ *
+ * The single source of truth for both drawing and hit-testing: two copies of
+ * this arithmetic is how a handle ends up drawn somewhere you cannot click.
+ */
+export const anchorStrip = (
+  element: ExcalidrawTableElement,
+  axis: Axis,
+  index: number,
+  zoom: number,
+  pointerType: string,
+): Rect | null => {
+  const { xs, ys } = gridLines(element);
+  const thickness = (ANCHOR_SIZES[pointerType] ?? ANCHOR_THICKNESS) / zoom;
+  const gap = ANCHOR_GAP_PX / zoom;
+  const clearance = CORNER_CLEARANCE_PX / zoom;
+  const bounds = axis === "col" ? xs : ys;
+  const count = bounds.length - 1;
+
+  if (index < 0 || index >= count) {
+    return null;
+  }
+
+  let start = bounds[index]!;
+  let end = bounds[index + 1]!;
+  if (index === 0) {
+    start += clearance;
+  }
+  if (index === count - 1) {
+    end -= clearance;
+  }
+  // A strip narrower than half a pointer target is not a target. Tied to the
+  // pointer size rather than a constant, so a finger and a mouse disagree
+  // about what counts as too small in the same direction they disagree about
+  // everything else.
+  if (end - start < thickness / 2) {
+    return null;
+  }
+
+  return axis === "col"
+    ? {
+        x: start,
+        y: ys[0]! - gap - thickness,
+        width: end - start,
+        height: thickness,
+      }
+    : {
+        x: xs[0]! - gap - thickness,
+        y: start,
+        width: thickness,
+        height: end - start,
+      };
+};
+
+/**
+ * The add-a-row and add-a-column buttons, at the trailing edge of the grid.
+ *
+ * Notion puts adding where you are already looking when you run out of grid,
+ * which is why nobody goes to a side panel to add a row. `axis` says what the
+ * button adds.
+ */
+export const plusButtons = (
+  element: ExcalidrawTableElement,
+  zoom: number,
+  pointerType: string,
+): (Rect & { axis: Axis })[] => {
+  const { xs, ys } = gridLines(element);
+  const size = (ANCHOR_SIZES[pointerType] ?? ANCHOR_THICKNESS) / zoom;
+  const gap = ANCHOR_GAP_PX / zoom;
+  // Pushed clear of the corner transform handle along the edge it sits on —
+  // the same clearance the first and last anchors get, and for the same
+  // reason: the corner is already spoken for.
+  const clear = CORNER_CLEARANCE_PX / zoom;
+  return [
+    {
+      axis: "col",
+      x: xs[xs.length - 1]! + gap + clear,
+      y: ys[0]! - gap - size,
+      width: size,
+      height: size,
+    },
+    {
+      axis: "row",
+      x: xs[0]! - gap - size,
+      y: ys[ys.length - 1]! + gap + clear,
+      width: size,
+      height: size,
+    },
+  ];
+};
+
+const inRect = (rect: Rect, x: number, y: number) =>
+  x >= rect.x &&
+  x <= rect.x + rect.width &&
+  y >= rect.y &&
+  y <= rect.y + rect.height;
 
 /** Which cell a scene point falls in, or null outside the table. */
 export const getCellUnderCursor = (
@@ -119,24 +265,20 @@ export const getDividerUnderCursor = (
   elementsMap: ElementsMap,
   scene: GlobalPoint,
   zoom: number,
+  pointerType: string = "mouse",
 ): TableDivider | null => {
   const [lx, ly] = toLocal(element, elementsMap, scene);
-  const slack = DIVIDER_HIT_PX / zoom;
+  const slack = (DIVIDER_HIT_PX * (pointerType === "touch" ? 2.4 : 1)) / zoom;
+  const { xs, ys } = gridLines(element);
 
-  if (lx < -slack || ly < -slack) {
-    return null;
-  }
-
-  if (ly >= -slack && ly <= element.height + slack) {
-    const xs = columnOffsets(element);
+  if (ly >= ys[0]! - slack && ly <= ys[ys.length - 1]! + slack) {
     for (let i = 1; i < xs.length - 1; i++) {
       if (Math.abs(lx - xs[i]!) <= slack) {
         return { axis: "col", index: i - 1 };
       }
     }
   }
-  if (lx >= -slack && lx <= element.width + slack) {
-    const ys = rowOffsets(element);
+  if (lx >= xs[0]! - slack && lx <= xs[xs.length - 1]! + slack) {
     for (let i = 1; i < ys.length - 1; i++) {
       if (Math.abs(ly - ys[i]!) <= slack) {
         return { axis: "row", index: i - 1 };
@@ -146,37 +288,45 @@ export const getDividerUnderCursor = (
   return null;
 };
 
-/**
- * The anchor under the cursor.
- *
- * Anchors sit just outside the table — column anchors above it, row anchors to
- * its left — which is where a reader already looks for them and keeps them off
- * the cells they address.
- */
+/** The anchor under the cursor, tested against the drawn geometry. */
 export const getAnchorUnderCursor = (
   element: ExcalidrawTableElement,
   elementsMap: ElementsMap,
   scene: GlobalPoint,
   zoom: number,
+  pointerType: string = "mouse",
 ): TableAnchor | null => {
   const [lx, ly] = toLocal(element, elementsMap, scene);
-  const strip = ANCHOR_PX / zoom;
-  const gap = 2 / zoom;
+  const cols = tableColCount(element);
+  const rows = tableRowCount(element);
 
-  if (ly < -gap && ly >= -gap - strip && lx >= 0 && lx <= element.width) {
-    const xs = columnOffsets(element);
-    for (let i = 0; i < xs.length - 1; i++) {
-      if (lx >= xs[i]! && lx <= xs[i + 1]!) {
-        return { axis: "col", index: i };
-      }
+  for (let i = 0; i < cols; i++) {
+    const strip = anchorStrip(element, "col", i, zoom, pointerType);
+    if (strip && inRect(strip, lx, ly)) {
+      return { axis: "col", index: i };
     }
   }
-  if (lx < -gap && lx >= -gap - strip && ly >= 0 && ly <= element.height) {
-    const ys = rowOffsets(element);
-    for (let i = 0; i < ys.length - 1; i++) {
-      if (ly >= ys[i]! && ly <= ys[i + 1]!) {
-        return { axis: "row", index: i };
-      }
+  for (let i = 0; i < rows; i++) {
+    const strip = anchorStrip(element, "row", i, zoom, pointerType);
+    if (strip && inRect(strip, lx, ly)) {
+      return { axis: "row", index: i };
+    }
+  }
+  return null;
+};
+
+/** The add button under the cursor, if any. */
+export const getPlusUnderCursor = (
+  element: ExcalidrawTableElement,
+  elementsMap: ElementsMap,
+  scene: GlobalPoint,
+  zoom: number,
+  pointerType: string = "mouse",
+): Axis | null => {
+  const [lx, ly] = toLocal(element, elementsMap, scene);
+  for (const button of plusButtons(element, zoom, pointerType)) {
+    if (inRect(button, lx, ly)) {
+      return button.axis;
     }
   }
   return null;
