@@ -23,6 +23,18 @@ const LABEL_FONT_SIZE = 14;
 const LABEL_GAP = 6;
 
 /**
+ * Room reserved inside the element for the dimension labels.
+ *
+ * The labels are part of the object, so they have to live inside its bounding
+ * box — drawn outside it they are clipped by the element's own canvas, which
+ * is what the first version did. Reserving a gutter costs a little drawing
+ * area and makes the selection box agree with what you can see.
+ */
+const LABEL_GUTTER_LEFT = 30;
+const LABEL_GUTTER_BOTTOM = LABEL_FONT_SIZE + LABEL_GAP * 2;
+const LABEL_GUTTER_RIGHT = 26;
+
+/**
  * On-screen edge lengths for a set of dimensions.
  *
  * Square-root compression rather than linear: a 512x3 tensor drawn to scale is
@@ -54,28 +66,43 @@ export const tensorGeometry = (element: ExcalidrawTensorElement) => {
   const volumetric = isVolumetric(element);
   const dims = element.dims;
 
+  // Every variant reserves the same gutters, so a 2-D and a 3-D block of the
+  // same size have their faces in the same place and swapping between them
+  // does not make the drawing jump.
+  const availableWidth = Math.max(
+    MIN_EDGE,
+    element.width - LABEL_GUTTER_LEFT - LABEL_GUTTER_RIGHT,
+  );
+  const availableHeight = Math.max(
+    MIN_EDGE,
+    element.height - LABEL_GUTTER_BOTTOM,
+  );
+
   if (!volumetric) {
     return {
       volumetric,
-      faceX: 0,
+      faceX: LABEL_GUTTER_LEFT,
       faceY: 0,
-      faceWidth: element.width,
-      faceHeight: element.height,
+      faceWidth: availableWidth,
+      faceHeight: availableHeight,
       dx: 0,
       dy: 0,
     };
   }
 
   // dims are [depth, height, width]; the depth lean costs width and height.
-  const [d] = edgeLengths([dims[0]!], Math.min(element.width, element.height));
+  const [d] = edgeLengths(
+    [dims[0]!],
+    Math.min(availableWidth, availableHeight),
+  );
   const dx = d * ISO_X;
   const dy = d * ISO_Y;
   return {
     volumetric,
-    faceX: 0,
+    faceX: LABEL_GUTTER_LEFT,
     faceY: dy,
-    faceWidth: Math.max(MIN_EDGE, element.width - dx),
-    faceHeight: Math.max(MIN_EDGE, element.height - dy),
+    faceWidth: Math.max(MIN_EDGE, availableWidth - dx),
+    faceHeight: Math.max(MIN_EDGE, availableHeight - dy),
     dx,
     dy,
   };

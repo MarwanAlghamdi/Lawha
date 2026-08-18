@@ -98,9 +98,6 @@ import { LawhaAccountDialog } from "./lawha/account/LawhaAccountDialog";
 import { useLawhaSession } from "./lawha/auth/useLawhaSession";
 
 import { AppFooter } from "./components/AppFooter";
-import { CodeOverlay } from "./lawha/code/CodeOverlay";
-import { GridToolbar } from "./lawha/table/GridToolbar";
-import { TableOverlay } from "./lawha/table/TableOverlay";
 import { AppMainMenu } from "./components/AppMainMenu";
 import { AppWelcomeScreen } from "./components/AppWelcomeScreen";
 
@@ -1137,34 +1134,6 @@ export const ExcalidrawWrapper = () => {
         <AppMainMenu
           theme={appTheme}
           refresh={() => forceRefresh((prev) => !prev)}
-        />
-        {/*
-          Lawha's grid tools, portaled into the editor's own toolbar row — the
-          LawhaLaserColor technique, so nothing in packages/ moves. The mode
-          dropdown beside them decides which are offered.
-        */}
-        <GridToolbar
-          excalidrawAPI={excalidrawAPI}
-          canEdit={boardAccess.canEdit}
-        />
-        {/*
-          Row and column handles for tables and matrices, positioned over the
-          canvas. Rendered as a child of <Excalidraw> so it sits inside the
-          editor container — never as Radix popover content, whose transform
-          would become the containing block for anything positioned inside it
-          (invariant 11). It renders nothing at all for a viewer.
-        */}
-        <TableOverlay
-          excalidrawAPI={excalidrawAPI}
-          canEdit={boardAccess.canEdit}
-        />
-        {/*
-          A code block is a picture, so it cannot be typed into on the canvas.
-          This is where its source is edited and its language chosen.
-        */}
-        <CodeOverlay
-          excalidrawAPI={excalidrawAPI}
-          canEdit={boardAccess.canEdit}
         />
         <AppWelcomeScreen />
         <OverwriteConfirmDialog>

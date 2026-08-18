@@ -101,8 +101,7 @@
     "release:latest": "node scripts/release.js --tag=latest",
     "rm:build": "rimraf --glob excalidraw-app/build excalidraw-app/dist excalidraw-app/dev-dist packages/*/dist packages/*/build",
     "rm:node_modules": "rimraf --glob node_modules excalidraw-app/node_modules packages/*/node_modules",
-    "clean-install": "yarn rm:node_modules && yarn install",
-    "test:e2e:grids": "playwright test --project=grid-objects"
+    "clean-install": "yarn rm:node_modules && yarn install"
   },
   "resolutions": {
     "strip-ansi": "6.0.1"
