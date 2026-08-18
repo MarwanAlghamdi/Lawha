@@ -21,7 +21,6 @@ import {
   ROUGHNESS,
   THEME,
   isTransparent,
-  assertNever,
   COLOR_PALETTE,
   LINE_POLYGON_POINT_MERGE_DISTANCE,
   applyDarkModeFilter,
@@ -989,10 +988,12 @@ const _generateElementShape = (
       return shape;
     }
     default: {
-      assertNever(
-        element,
-        `generateElementShape(): Unimplemented type ${(element as any)?.type}`,
-      );
+      // LAWHA: `null` is already the correct answer here — it is the cached
+      // value meaning "no roughjs shape applies to this type", which is
+      // exactly true of a type this build cannot draw. `assertNever` throws,
+      // and since `restore.ts` now preserves unknown types rather than
+      // deleting them, throwing would turn a element we cannot render into a
+      // board we cannot open.
       return null;
     }
   }
@@ -1114,6 +1115,14 @@ export const getElementShape = <Point extends GlobalPoint | LocalPoint>(
         shouldTestInside(element),
       );
     }
+
+    // LAWHA: a type this build does not know still has a bounding box, so hit
+    // detection degrades to "it is a rectangle" rather than returning
+    // undefined. Without this the switch falls off the end and every caller —
+    // selection, lasso, arrow binding — silently misbehaves around an element
+    // it can see on the canvas.
+    default:
+      return getPolygonShape(element);
   }
 };
 

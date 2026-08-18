@@ -525,10 +525,36 @@ const drawElementOnCanvas = (
           context.canvas.remove();
         }
       } else {
-        throw new Error(`Unimplemented type ${element.type}`);
+        // LAWHA: an element of a type this build does not know. `restore.ts`
+        // now keeps such elements rather than deleting them, so one can reach
+        // the renderer — and a throw here takes down the whole frame, which is
+        // worse than the deletion we set out to prevent. Draw a placeholder
+        // and let the rest of the board render.
+        drawUnknownTypePlaceholder(element, context);
       }
     }
   }
+};
+
+/**
+ * A dashed box standing in for an element this build cannot draw.
+ *
+ * Deliberately quiet — dashed, half-opacity, no fill. It marks the space as
+ * occupied so a reader understands something is there and does not draw over
+ * it, without pretending to be content. Same intent as
+ * `drawImagePlaceholder`, which stands in for a picture that has not loaded.
+ */
+const drawUnknownTypePlaceholder = (
+  element: ExcalidrawElement,
+  context: CanvasRenderingContext2D,
+) => {
+  context.save();
+  context.globalAlpha = 0.5;
+  context.strokeStyle = element.strokeColor ?? "#868e96";
+  context.lineWidth = 1;
+  context.setLineDash([4, 4]);
+  context.strokeRect(0, 0, element.width, element.height);
+  context.restore();
 };
 
 export const elementWithCanvasCache = new WeakMap<
@@ -985,8 +1011,22 @@ export const renderElement = (
       break;
     }
     default: {
-      // @ts-ignore
-      throw new Error(`Unimplemented type ${element.type}`);
+      // LAWHA: see `drawUnknownTypePlaceholder`. A type this build does not
+      // know is now preserved by `restore.ts` rather than dropped, so it can
+      // arrive here; throwing would fail the whole frame.
+      context.save();
+      context.globalAlpha = 0.5;
+      context.strokeStyle = "#868e96";
+      context.lineWidth = 1;
+      context.setLineDash([4, 4]);
+      context.strokeRect(
+        element.x + appState.scrollX,
+        element.y + appState.scrollY,
+        element.width,
+        element.height,
+      );
+      context.restore();
+      break;
     }
   }
 

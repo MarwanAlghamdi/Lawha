@@ -505,6 +505,18 @@ export const intersectElementWithLineSegment = (
         elementsMap,
         onlyFirst,
       );
+    // LAWHA: an element of a type this build does not know still occupies a
+    // box. Falling through to the rectanguloid path keeps hit detection,
+    // arrow binding and lasso working around it; without a default the switch
+    // returns undefined and every caller misbehaves silently.
+    default:
+      return intersectRectanguloidWithLineSegment(
+        element,
+        elementsMap,
+        line,
+        offset,
+        onlyFirst,
+      );
   }
 };
 

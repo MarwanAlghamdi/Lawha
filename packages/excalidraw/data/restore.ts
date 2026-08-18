@@ -701,11 +701,37 @@ export const restoreElement = (
         name: element.name ?? null,
       });
 
-    // Don't use default case so as to catch a missing an element type case.
-    // We also don't want to throw, but instead return void so we filter
-    // out these unsupported elements from the restored array.
+    // LAWHA: a type this build does not recognise is KEPT, not dropped.
+    //
+    // Upstream deliberately omits a default here so a missing case is caught,
+    // and returns null so the element is filtered out of the restored array.
+    // The filtering is the problem. `restoreElements` runs on every ingest
+    // path — initial data, scene load, file open, paste, library insert — and
+    // in this fork it also runs on *remote* elements before `reconcileElements`
+    // (`excalidraw-app/data/storage/lawha.ts`). The client then saves the scene
+    // back. So a client that has not yet been updated does not merely fail to
+    // draw a newer element: it deletes it and persists the deletion to the
+    // server, for everybody.
+    //
+    // Keeping it costs nothing. `restoreElementWithProperties` spreads the
+    // original element first, expressly to preserve unknown properties for
+    // forward-compatibility, so `{}` gives full normalisation of the fields
+    // every element shares and carries the rest through untouched.
+    //
+    // This only protects clients running this commit forward. An older bundle
+    // already deployed, or upstream Excalidraw opening an exported file, still
+    // drops the element — that is a distribution problem, not a code one.
+    //
+    // Preserving the element is only half the job: it now reaches renderers
+    // that used to throw on an unknown type, which would be worse than
+    // dropping. See the placeholder paths in `renderElement.ts`, `shape.ts`
+    // and `staticSvgScene.ts`.
+    default:
+      return restoreElementWithProperties(
+        element as Extract<ExcalidrawElement, { type: "rectangle" }>,
+        {},
+      );
   }
-  return null;
 };
 
 /**

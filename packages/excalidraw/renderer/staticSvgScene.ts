@@ -708,8 +708,28 @@ const renderElementToSvg = (
 
         addToRoot(g || node, element);
       } else {
-        // @ts-ignore
-        throw new Error(`Unimplemented type ${element.type}`);
+        // LAWHA: a type this build does not know. `restore.ts` keeps such
+        // elements now rather than deleting them, so an export can encounter
+        // one — and throwing would fail the entire export rather than one
+        // shape. Emit the same quiet dashed box the canvas renderer draws, so
+        // the exported picture agrees with what was on screen.
+        // The switch above is exhaustive over the known union, so TypeScript
+        // has narrowed `element` to `never` here. The cast says what is
+        // actually true at runtime: it is some element, just not one of ours.
+        const unknown = element as ExcalidrawElement;
+        const placeholder = svgRoot.ownerDocument!.createElementNS(
+          SVG_NS,
+          "rect",
+        );
+        placeholder.setAttribute("x", `${unknown.x + offsetX}`);
+        placeholder.setAttribute("y", `${unknown.y + offsetY}`);
+        placeholder.setAttribute("width", `${unknown.width}`);
+        placeholder.setAttribute("height", `${unknown.height}`);
+        placeholder.setAttribute("fill", "none");
+        placeholder.setAttribute("stroke", "#868e96");
+        placeholder.setAttribute("stroke-dasharray", "4 4");
+        placeholder.setAttribute("opacity", "0.5");
+        addToRoot(placeholder, unknown);
       }
     }
   }

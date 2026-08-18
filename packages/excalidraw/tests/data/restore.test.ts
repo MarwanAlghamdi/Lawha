@@ -59,15 +59,24 @@ describe("restoreElements", () => {
     expect(sizeHelpers.isInvisiblySmallElement).toBeCalledTimes(0);
   });
 
-  it("should return empty array when input type is not supported", () => {
+  // LAWHA: this test asserted the upstream behaviour — an unsupported type is
+  // dropped — and that behaviour was deliberately reversed. Dropping is not
+  // harmless here: `restoreElements` runs on remote elements before
+  // reconciliation and the client saves the scene back, so an out-of-date
+  // client deleted newer elements and persisted the deletion for everybody.
+  // The assertion is inverted rather than deleted, so the new contract is
+  // pinned in the same place the old one was. See the default case in
+  // `data/restore.ts`.
+  it("should keep an element whose type is not supported", () => {
     const dummyNotSupportedElement: any = API.createElement({
       type: "text",
     });
 
     dummyNotSupportedElement.type = "not supported";
-    expect(
-      restore.restoreElements([dummyNotSupportedElement], null).length,
-    ).toBe(0);
+    const restored = restore.restoreElements([dummyNotSupportedElement], null);
+
+    expect(restored.length).toBe(1);
+    expect(restored[0].type).toBe("not supported");
   });
 
   it("should return empty array when isInvisiblySmallElement is true", () => {
