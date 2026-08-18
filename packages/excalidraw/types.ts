@@ -561,8 +561,14 @@ export interface AppState {
    */
   editingTableElement: TableEditorState | null;
 
-  /** LAWHA: the code block whose source is open in the inline editor. */
-  editingCodeElementId: ExcalidrawElement["id"] | null;
+  /**
+   * LAWHA: the code block or tensor open in an inline editor.
+   *
+   * One slot rather than one per type, because only one element is ever being
+   * edited: which editor to show follows from the element's own type, so a
+   * second field would only be able to disagree with the first.
+   */
+  editingLawhaElementId: ExcalidrawElement["id"] | null;
 
   /** null if no search matches found / search closed */
   searchMatches: Readonly<{

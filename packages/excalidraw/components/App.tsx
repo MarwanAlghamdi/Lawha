@@ -149,6 +149,7 @@ import {
   isImageElement,
   isTableElement,
   isCodeElement,
+  isTensorElement,
   applyAnchorDrop,
   applyDividerDrag,
   dropTargetForAnchor,
@@ -448,6 +449,7 @@ import { activeConfirmDialogAtom } from "./ActiveConfirmDialog";
 import { AppArrowText } from "./App.arrowText";
 import { AppCursor } from "./App.cursor";
 import { CodeBlockEditor } from "./CodeBlockEditor";
+import { TensorDimsEditor } from "./TensorDimsEditor";
 import { TableCellEditor, setCellText } from "./TableCellEditor";
 import { AppDrawShape } from "./App.drawshape";
 import { AppFlowchart } from "./App.flowchart";
@@ -2193,25 +2195,41 @@ class App extends React.Component<AppProps, AppState> {
       );
     }
 
-    const codeElement =
-      this.state.editingCodeElementId &&
-      this.state.selectedElementIds[this.state.editingCodeElementId]
-        ? elementsMap.get(this.state.editingCodeElementId)
+    const inlineElement =
+      this.state.editingLawhaElementId &&
+      this.state.selectedElementIds[this.state.editingLawhaElementId]
+        ? elementsMap.get(this.state.editingLawhaElementId)
         : null;
 
-    if (codeElement && isCodeElement(codeElement)) {
+    const closeInlineEditor = () => {
+      this.store.scheduleCapture();
+      this.setState({ editingLawhaElementId: null });
+    };
+
+    if (inlineElement && isCodeElement(inlineElement)) {
       editors.push(
         <CodeBlockEditor
-          key={`code-${codeElement.id}`}
-          element={codeElement}
+          key={`code-${inlineElement.id}`}
+          element={inlineElement}
           appState={this.state}
           onChange={(element, source) => {
             this.scene.mutateElement(element, { source });
           }}
-          onClose={() => {
-            this.store.scheduleCapture();
-            this.setState({ editingCodeElementId: null });
+          onClose={closeInlineEditor}
+        />,
+      );
+    }
+
+    if (inlineElement && isTensorElement(inlineElement)) {
+      editors.push(
+        <TensorDimsEditor
+          key={`tensor-${inlineElement.id}`}
+          element={inlineElement}
+          appState={this.state}
+          onChange={(element, dims) => {
+            this.scene.mutateElement(element, { dims });
           }}
+          onClose={closeInlineEditor}
         />,
       );
     }
@@ -5514,12 +5532,12 @@ class App extends React.Component<AppProps, AppState> {
         // other editor here.
         if (
           event.key === KEYS.ESCAPE &&
-          (this.state.editingTableElement || this.state.editingCodeElementId)
+          (this.state.editingTableElement || this.state.editingLawhaElementId)
         ) {
           this.store.scheduleCapture();
           this.setState({
             editingTableElement: null,
-            editingCodeElementId: null,
+            editingLawhaElementId: null,
           });
           return;
         }
@@ -5529,9 +5547,9 @@ class App extends React.Component<AppProps, AppState> {
         // does not point, and Enter is where every grid puts that route.
         if (selectedElements.length === 1 && event.key === KEYS.ENTER) {
           const element = selectedElements[0];
-          if (isCodeElement(element)) {
+          if (isCodeElement(element) || isTensorElement(element)) {
             this.store.scheduleCapture();
-            this.setState({ editingCodeElementId: element.id });
+            this.setState({ editingLawhaElementId: element.id });
             return;
           }
           if (isTableElement(element)) {
@@ -7325,13 +7343,18 @@ class App extends React.Component<AppProps, AppState> {
       }
     }
 
-    // LAWHA: a double-click on a code block edits its source. It used to open
-    // image cropping, because a code block used to be an image; now that it is
-    // its own type the gesture can mean what it looks like it means.
-    if (selectedElements.length === 1 && isCodeElement(selectedElements[0])) {
+    // LAWHA: a double-click on a code block edits its source, and on a tensor
+    // edits its shape. The first used to open image cropping, because a code
+    // block used to be an image; now that both are their own types the gesture
+    // can mean what it looks like it means.
+    if (
+      selectedElements.length === 1 &&
+      (isCodeElement(selectedElements[0]) ||
+        isTensorElement(selectedElements[0]))
+    ) {
       this.store.scheduleCapture();
       this.setState({
-        editingCodeElementId: selectedElements[0].id,
+        editingLawhaElementId: selectedElements[0].id,
         editingTableElement: null,
       });
       return;
@@ -7355,7 +7378,7 @@ class App extends React.Component<AppProps, AppState> {
             activeCell: cell,
             selection: null,
           },
-          editingCodeElementId: null,
+          editingLawhaElementId: null,
         });
         return;
       }

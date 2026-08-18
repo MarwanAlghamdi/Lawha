@@ -226,3 +226,16 @@ export const drawTensorOnCanvas = (
 
   context.restore();
 };
+
+/**
+ * Parse a shape written the way a shape is written: `64x32x32`,
+ * `64, 32, 32`, `64 × 32 × 32`.
+ *
+ * Anything that is not a positive number is dropped rather than turned into a
+ * zero-sized face — a typo should cost you a digit, not the block.
+ */
+export const parseDims = (input: string): number[] =>
+  input
+    .split(/[^0-9.]+/)
+    .map((part) => Number(part))
+    .filter((n) => Number.isFinite(n) && n > 0);

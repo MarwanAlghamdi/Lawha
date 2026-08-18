@@ -40,6 +40,7 @@ import {
 } from "./icons";
 
 import { Island } from "./Island";
+import { LawhaElementActions } from "./LawhaElementActions";
 
 import { getShapeActionPredicates } from "./shapeActionPredicates";
 
@@ -159,6 +160,10 @@ export const SelectedShapeActions = ({
         <div>{renderAction("changeBackgroundColor")}</div>
       )}
       {predicates.fill && renderAction("changeFillStyle")}
+
+      {/* LAWHA: table, tensor and code properties. One line here; the panel
+          itself lives in its own file so a merge never has to read it. */}
+      <LawhaElementActions app={app} targetElements={targetElements} />
 
       {predicates.strokeWidth && renderAction("changeStrokeWidth")}
 

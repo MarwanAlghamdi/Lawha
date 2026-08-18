@@ -5,11 +5,13 @@ import {
   CaptureUpdateAction,
   newCodeElement,
   newTableElement,
+  newTensorElement,
 } from "@excalidraw/element";
 
 import type {
   ExcalidrawCodeElement,
   ExcalidrawTableElement,
+  ExcalidrawTensorElement,
 } from "@excalidraw/element/types";
 
 import { Excalidraw } from "../index";
@@ -227,6 +229,53 @@ describe("lawha grid objects", () => {
     });
   });
 
+  describe("tensors", () => {
+    const placeTensor = () => {
+      const element = newTensorElement({
+        x: 100,
+        y: 100,
+        width: 240,
+        height: 180,
+        dims: [64, 32, 32],
+      });
+      API.updateScene({
+        elements: [element],
+        captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+      });
+      API.setSelectedElements([element]);
+      return element;
+    };
+
+    it("edits its shape on double-click rather than stapling on a text label", () => {
+      placeTensor();
+
+      mouse.doubleClickAt(220, 190);
+
+      expect(h.state.editingLawhaElementId).toBe(h.elements[0].id);
+      expect(
+        document.querySelector(".excalidraw-tensor-dims-editor"),
+      ).not.toBeNull();
+      // no loose text element was created alongside it
+      expect(h.elements.filter((el) => el.type === "text")).toHaveLength(0);
+    });
+
+    it("writes a typed shape back onto the one element", () => {
+      placeTensor();
+      mouse.doubleClickAt(220, 190);
+
+      const editor = document.querySelector<HTMLInputElement>(
+        ".excalidraw-tensor-dims-editor",
+      )!;
+      fireEvent.change(editor, { target: { value: "128 x 16 x 8" } });
+      fireEvent.keyDown(editor, { key: "Enter" });
+
+      expect((h.elements[0] as ExcalidrawTensorElement).dims).toEqual([
+        128, 16, 8,
+      ]);
+      expect(h.elements).toHaveLength(1);
+    });
+  });
+
   describe("code blocks", () => {
     const placeCode = () => {
       const element = newCodeElement({
@@ -251,7 +300,7 @@ describe("lawha grid objects", () => {
       mouse.doubleClickAt(200, 200);
 
       expect(h.state.croppingElementId).toBeNull();
-      expect(h.state.editingCodeElementId).toBe(h.elements[0].id);
+      expect(h.state.editingLawhaElementId).toBe(h.elements[0].id);
       expect(document.querySelector(".excalidraw-code-editor")).not.toBeNull();
     });
 
@@ -268,13 +317,24 @@ describe("lawha grid objects", () => {
       expect((h.elements[0] as ExcalidrawCodeElement).source).toBe("print(2)");
     });
 
+    it("selects from inside the block, not only from its outline", () => {
+      placeCode();
+      API.setSelectedElements([]);
+
+      mouse.clickAt(200, 200);
+
+      expect(Object.keys(h.state.selectedElementIds)).toEqual([
+        h.elements[0].id,
+      ]);
+    });
+
     it("leaves the editor on Escape", () => {
       placeCode();
       mouse.doubleClickAt(200, 200);
 
       Keyboard.keyPress(KEYS.ESCAPE, GlobalTestState.interactiveCanvas);
 
-      expect(h.state.editingCodeElementId).toBeNull();
+      expect(h.state.editingLawhaElementId).toBeNull();
     });
   });
 });
