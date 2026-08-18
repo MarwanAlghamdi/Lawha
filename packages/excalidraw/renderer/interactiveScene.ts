@@ -38,6 +38,7 @@ import {
   isFrameLikeElement,
   isImageElement,
   isLinearElement,
+  isTableElement,
   isLineElement,
   maxBindingDistance_simple,
   isTextElement,
@@ -80,6 +81,7 @@ import type {
 } from "@excalidraw/element/types";
 
 import { renderSnaps } from "../renderer/renderSnaps";
+import { renderTableHandles } from "../renderer/tableHandles";
 import { roundRect } from "../renderer/roundRect";
 import {
   getScrollBars,
@@ -1973,6 +1975,23 @@ const _renderInteractiveScene = ({
             elementsMap,
           );
         }
+      }
+
+      // LAWHA: a table's interior handles, which `TransformHandles` cannot
+      // express. Same guards as the bounding box above — hidden in view mode
+      // and while a cell's text is being edited.
+      if (
+        !appState.viewModeEnabled &&
+        showBoundingBox &&
+        isTableElement(selectedElements[0])
+      ) {
+        renderTableHandles(
+          context,
+          renderConfig,
+          appState,
+          selectedElements[0],
+          elementsMap,
+        );
       }
     } else if (
       selectedElements.length > 1 &&

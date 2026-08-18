@@ -12,7 +12,7 @@ import { ShapeCache } from "./shape";
 
 import { updateElbowArrowPoints } from "./elbowArrow";
 
-import { isElbowArrow } from "./typeChecks";
+import { isElbowArrow, isLawhaElement } from "./typeChecks";
 
 import type {
   ElementsMap,
@@ -25,6 +25,30 @@ export type ElementUpdate<TElement extends ExcalidrawElement> = Omit<
   Partial<TElement>,
   "id" | "updated"
 >;
+
+/**
+ * LAWHA: the keys whose value *is* the drawing, for a table, tensor or code
+ * block.
+ *
+ * Those three types paint straight onto their element canvas instead of going
+ * through roughjs, so their content is their shape — and `ShapeCache.delete`,
+ * which also drops the cached canvas, is the only thing that makes an edited
+ * cell or a dragged divider repaint. Listing the keys rather than invalidating
+ * on every mutation keeps an ordinary drag from regenerating a
+ * syntax-highlighted canvas on every frame.
+ */
+const LAWHA_VISUAL_KEYS = [
+  "cells",
+  "colWidths",
+  "rowHeights",
+  "headerRow",
+  "variant",
+  "dims",
+  "name",
+  "source",
+  "language",
+  "showLineNumbers",
+] as const;
 
 /**
  * This function tracks updates of text elements for the purposes for collaboration.
@@ -131,7 +155,8 @@ export const mutateElement = <TElement extends Mutable<ExcalidrawElement>>(
     typeof updates.height !== "undefined" ||
     typeof updates.width !== "undefined" ||
     typeof fileId != "undefined" ||
-    typeof points !== "undefined"
+    typeof points !== "undefined" ||
+    (isLawhaElement(element) && LAWHA_VISUAL_KEYS.some((key) => key in updates))
   ) {
     ShapeCache.delete(element);
   }

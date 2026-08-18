@@ -11,6 +11,8 @@ import type { LinearElementEditor } from "@excalidraw/element";
 
 import type { MaybeTransformHandleType } from "@excalidraw/element";
 
+import type { TableEditorState } from "@excalidraw/element";
+
 import type {
   PointerType,
   ExcalidrawLinearElement,
@@ -267,6 +269,8 @@ export type InteractiveCanvasAppState = Readonly<
     // Cropping
     isCropping: AppState["isCropping"];
     croppingElementId: AppState["croppingElementId"];
+    // LAWHA: table interior handles
+    editingTableElement: AppState["editingTableElement"];
     // Search matches
     searchMatches: AppState["searchMatches"];
     activeLockedId: AppState["activeLockedId"];
@@ -545,6 +549,20 @@ export interface AppState {
   /** image cropping */
   isCropping: boolean;
   croppingElementId: ExcalidrawElement["id"] | null;
+
+  /**
+   * LAWHA: interior-handle state for the selected table.
+   *
+   * Parallel to `selectedLinearElement` and for the same reason: a table owns
+   * addressable parts (cells, row/column anchors, the dividers between them)
+   * that `TransformHandles` — a closed set of nine bounding-box handles —
+   * cannot express. Holds an id rather than an element so it cannot go stale
+   * against the scene, and is never persisted.
+   */
+  editingTableElement: TableEditorState | null;
+
+  /** LAWHA: the code block whose source is open in the inline editor. */
+  editingCodeElementId: ExcalidrawElement["id"] | null;
 
   /** null if no search matches found / search closed */
   searchMatches: Readonly<{

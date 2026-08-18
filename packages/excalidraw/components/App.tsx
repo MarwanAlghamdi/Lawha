@@ -147,6 +147,15 @@ import {
   isBoundToContainer,
   isFrameLikeElement,
   isImageElement,
+  isTableElement,
+  isCodeElement,
+  applyAnchorDrop,
+  applyDividerDrag,
+  dropTargetForAnchor,
+  emptyTableEditor,
+  getAnchorUnderCursor,
+  getCellUnderCursor,
+  getDividerUnderCursor,
   isEmbeddableElement,
   isInitializedImageElement,
   isLinearElement,
@@ -274,6 +283,7 @@ import type {
   NonDeleted,
   InitializedExcalidrawImageElement,
   ExcalidrawImageElement,
+  ExcalidrawTableElement,
   FileId,
   NonDeletedExcalidrawElement,
   ExcalidrawTextContainer,
@@ -437,6 +447,8 @@ import ConvertElementTypePopup, {
 import { activeConfirmDialogAtom } from "./ActiveConfirmDialog";
 import { AppArrowText } from "./App.arrowText";
 import { AppCursor } from "./App.cursor";
+import { CodeBlockEditor } from "./CodeBlockEditor";
+import { TableCellEditor, setCellText } from "./TableCellEditor";
 import { AppDrawShape } from "./App.drawshape";
 import { AppFlowchart } from "./App.flowchart";
 import { AppPan, PAN_INTENT_THRESHOLD_PX } from "./App.pan";
@@ -2128,6 +2140,85 @@ class App extends React.Component<AppProps, AppState> {
     this.setState({ editingFrame: null });
   };
 
+  /**
+   * LAWHA: the inline editors for a table cell and for a code block's source.
+   *
+   * Both are DOM overlays rather than canvas text — the frame-name pattern,
+   * for the reason set out in `TableCellEditor`. They render inside the app so
+   * they inherit the container's stacking and pointer handling.
+   */
+  private renderLawhaInlineEditors = () => {
+    const elementsMap = this.scene.getNonDeletedElementsMap();
+    const editors = [];
+
+    const tableEditor = this.state.editingTableElement;
+    // Guarded on selection as well as on the editor slot: deselecting a table
+    // must close its cell editor, and nothing else clears the slot.
+    const tableElement =
+      tableEditor?.activeCell &&
+      this.state.selectedElementIds[tableEditor.elementId]
+        ? elementsMap.get(tableEditor.elementId)
+        : null;
+
+    if (tableEditor && tableElement && isTableElement(tableElement)) {
+      editors.push(
+        <TableCellEditor
+          key={`cell-${tableElement.id}`}
+          element={tableElement}
+          appState={this.state}
+          onChange={(element, text) => {
+            const cell = this.state.editingTableElement?.activeCell;
+            if (cell) {
+              this.scene.mutateElement(element, {
+                cells: setCellText(element, cell, text),
+              });
+            }
+          }}
+          onNavigate={(next) => {
+            // One undo step per cell visited, rather than one per keystroke:
+            // captured on leaving the cell, which is when the edit is done.
+            this.store.scheduleCapture();
+            this.setState((prevState) =>
+              prevState.editingTableElement
+                ? {
+                    editingTableElement: {
+                      ...prevState.editingTableElement,
+                      activeCell: next,
+                    },
+                  }
+                : null,
+            );
+          }}
+        />,
+      );
+    }
+
+    const codeElement =
+      this.state.editingCodeElementId &&
+      this.state.selectedElementIds[this.state.editingCodeElementId]
+        ? elementsMap.get(this.state.editingCodeElementId)
+        : null;
+
+    if (codeElement && isCodeElement(codeElement)) {
+      editors.push(
+        <CodeBlockEditor
+          key={`code-${codeElement.id}`}
+          element={codeElement}
+          appState={this.state}
+          onChange={(element, source) => {
+            this.scene.mutateElement(element, { source });
+          }}
+          onClose={() => {
+            this.store.scheduleCapture();
+            this.setState({ editingCodeElementId: null });
+          }}
+        />,
+      );
+    }
+
+    return editors.length ? editors : null;
+  };
+
   private renderFrameNames = () => {
     if (!this.state.frameRendering.enabled || !this.state.frameRendering.name) {
       if (this.state.editingFrame) {
@@ -2663,6 +2754,7 @@ class App extends React.Component<AppProps, AppState> {
                               />
                             )}
                           {this.renderFrameNames()}
+                          {this.renderLawhaInlineEditors()}
                           {this.isDefaultUIEnabled() &&
                             this.state.activeLockedId && (
                               <UnlockPopup
@@ -5418,6 +5510,53 @@ class App extends React.Component<AppProps, AppState> {
           return;
         }
 
+        // LAWHA: Escape leaves a cell or a code block, the way it leaves any
+        // other editor here.
+        if (
+          event.key === KEYS.ESCAPE &&
+          (this.state.editingTableElement || this.state.editingCodeElementId)
+        ) {
+          this.store.scheduleCapture();
+          this.setState({
+            editingTableElement: null,
+            editingCodeElementId: null,
+          });
+          return;
+        }
+
+        // LAWHA: Enter opens whatever the selection is for editing. A table
+        // with no keyboard route into its cells is unusable for anyone who
+        // does not point, and Enter is where every grid puts that route.
+        if (selectedElements.length === 1 && event.key === KEYS.ENTER) {
+          const element = selectedElements[0];
+          if (isCodeElement(element)) {
+            this.store.scheduleCapture();
+            this.setState({ editingCodeElementId: element.id });
+            return;
+          }
+          if (isTableElement(element)) {
+            const editor = this.state.editingTableElement;
+            const selection =
+              editor?.elementId === element.id ? editor.selection : null;
+            this.store.scheduleCapture();
+            this.setState({
+              editingTableElement: {
+                ...(editor?.elementId === element.id
+                  ? editor
+                  : emptyTableEditor(element.id)),
+                activeCell:
+                  selection?.axis === "col"
+                    ? { row: 0, col: selection.indices[0] ?? 0 }
+                    : selection?.axis === "row"
+                    ? { row: selection.indices[0] ?? 0, col: 0 }
+                    : { row: 0, col: 0 },
+                selection: null,
+              },
+            });
+            return;
+          }
+        }
+
         // Shape switching
         if (event.key === KEYS.ESCAPE) {
           this.updateEditorAtom(convertElementTypePopupAtom, null);
@@ -7186,6 +7325,42 @@ class App extends React.Component<AppProps, AppState> {
       }
     }
 
+    // LAWHA: a double-click on a code block edits its source. It used to open
+    // image cropping, because a code block used to be an image; now that it is
+    // its own type the gesture can mean what it looks like it means.
+    if (selectedElements.length === 1 && isCodeElement(selectedElements[0])) {
+      this.store.scheduleCapture();
+      this.setState({
+        editingCodeElementId: selectedElements[0].id,
+        editingTableElement: null,
+      });
+      return;
+    }
+
+    // LAWHA: a double-click on a table edits the cell under the cursor.
+    if (selectedElements.length === 1 && isTableElement(selectedElements[0])) {
+      const table = selectedElements[0];
+      const cell = getCellUnderCursor(
+        table,
+        this.scene.getNonDeletedElementsMap(),
+        pointFrom<GlobalPoint>(sceneX, sceneY),
+      );
+      if (cell) {
+        this.store.scheduleCapture();
+        this.setState({
+          editingTableElement: {
+            ...(this.state.editingTableElement?.elementId === table.id
+              ? this.state.editingTableElement
+              : emptyTableEditor(table.id)),
+            activeCell: cell,
+            selection: null,
+          },
+          editingCodeElementId: null,
+        });
+        return;
+      }
+    }
+
     if (selectedElements.length === 1 && isImageElement(selectedElements[0])) {
       this.startImageCropping(selectedElements[0]);
       return;
@@ -7740,6 +7915,8 @@ class App extends React.Component<AppProps, AppState> {
       },
       isOverScrollBar,
     );
+
+    this.handleTableInteriorPointerMove({ x: scenePointerX, y: scenePointerY });
 
     if (
       !this.state.newElement &&
@@ -8663,6 +8840,12 @@ class App extends React.Component<AppProps, AppState> {
     }
 
     if (this.handleDraggingScrollBar(event, pointerDownState)) {
+      return;
+    }
+
+    // LAWHA: a table's interior handles win over its bounding box, the way a
+    // linear element's points do. Must run before the transform-handle test.
+    if (this.handleTableInteriorPointerDown(event, pointerDownState)) {
       return;
     }
 
@@ -10542,6 +10725,289 @@ class App extends React.Component<AppProps, AppState> {
    * is separate from `createGenericElementOnPointerDown`; everything after
    * construction is the editor's existing behaviour.
    */
+  /**
+   * LAWHA: the table whose interior handles are live, if any.
+   *
+   * A single unlocked, selected table with a selection-like tool active — the
+   * same conditions under which the bounding-box handles appear, so the two
+   * systems are never both live on different elements.
+   */
+  private getInteractiveTableElement = (): ExcalidrawTableElement | null => {
+    if (
+      this.state.viewModeEnabled ||
+      !isSelectionLikeTool(this.state.activeTool.type) ||
+      this.state.editingTextElement
+    ) {
+      return null;
+    }
+    const selected = this.scene.getSelectedElements(this.state);
+    const element = selected.length === 1 ? selected[0] : null;
+    return element && isTableElement(element) && !element.locked
+      ? element
+      : null;
+  };
+
+  /**
+   * LAWHA: pointer-down on a table's interior handles.
+   *
+   * Runs before the bounding-box handle test, so a divider sitting near a
+   * corner wins — the arbitration the plan calls for, and the same precedence
+   * `hoverPointIndex` gets over the box for a linear element.
+   *
+   * The drag is self-contained: it installs its own move/up listeners and
+   * returns `true`, the way `handleDraggingScrollBar` does. That keeps the
+   * whole gesture in one place instead of scattering four branches across the
+   * shared pointer handlers, which is where a subtle ordering bug would live.
+   *
+   * @returns whether the pointer event has been completely handled
+   */
+  private handleTableInteriorPointerDown = (
+    event: React.PointerEvent<HTMLElement>,
+    pointerDownState: PointerDownState,
+  ): boolean => {
+    const element = this.getInteractiveTableElement();
+
+    if (!element) {
+      return false;
+    }
+
+    const elementsMap = this.scene.getNonDeletedElementsMap();
+    const zoom = this.state.zoom.value;
+    const origin = pointFrom<GlobalPoint>(
+      pointerDownState.origin.x,
+      pointerDownState.origin.y,
+    );
+
+    const divider = getDividerUnderCursor(element, elementsMap, origin, zoom);
+    let anchor = divider
+      ? null
+      : getAnchorUnderCursor(element, elementsMap, origin, zoom);
+
+    // Dividers are strictly interior and collide with nothing, so they win
+    // outright. Anchors sit just *outside* the table, where the `n`, `w` and
+    // corner transform handles already live — so there the bounding box keeps
+    // its pixels, and a table stays resizable from its edges. Claiming those
+    // few pixels would trade a resize gesture for a select gesture that the
+    // rest of the strip already offers.
+    if (anchor) {
+      const bboxHandle = getElementWithTransformHandleType(
+        this.scene.getNonDeletedElements(),
+        this.state,
+        pointerDownState.origin.x,
+        pointerDownState.origin.y,
+        this.state.zoom,
+        event.pointerType,
+        elementsMap,
+        this.editorInterface,
+      );
+      if (bboxHandle != null) {
+        anchor = null;
+      }
+    }
+
+    if (!divider && !anchor) {
+      return false;
+    }
+
+    // The pristine table, captured before the gesture. Every frame applies the
+    // *total* delta to this rather than accumulating per-frame deltas: a drag
+    // past the minimum-width floor and back must return the divider to the
+    // cursor, and incremental application would leave it behind by whatever
+    // the floor swallowed.
+    const original = pointerDownState.originalElements.get(element.id);
+    const startTable =
+      original && isTableElement(original) ? original : element;
+
+    const previous =
+      this.state.editingTableElement?.elementId === element.id
+        ? this.state.editingTableElement
+        : emptyTableEditor(element.id);
+
+    this.setState({
+      editingTableElement: {
+        ...previous,
+        activeCell: null,
+        hoveredDivider: divider,
+        draggingDivider: divider,
+        draggingAnchor: anchor ? { ...anchor, to: anchor.index } : null,
+        // Clicking an anchor selects its whole row or column. Shift extends
+        // the selection along the same axis, as it does in every grid.
+        selection: anchor
+          ? {
+              axis: anchor.axis,
+              indices:
+                event.shiftKey &&
+                previous.selection?.axis === anchor.axis &&
+                !previous.selection.indices.includes(anchor.index)
+                  ? [...previous.selection.indices, anchor.index]
+                  : [anchor.index],
+            }
+          : previous.selection,
+      },
+    });
+
+    this.cursor.set(
+      divider
+        ? divider.axis === "col"
+          ? CURSOR_TYPE.COL_RESIZE
+          : CURSOR_TYPE.ROW_RESIZE
+        : CURSOR_TYPE.MOVE,
+    );
+
+    let didChange = false;
+
+    const onPointerMove = withBatchedUpdatesThrottled(
+      (moveEvent: PointerEvent) => {
+        const pointer = viewportCoordsToSceneCoords(moveEvent, this.state);
+        const live = this.scene.getNonDeletedElementsMap().get(element.id) as
+          | ExcalidrawTableElement
+          | undefined;
+
+        if (!live || !isTableElement(live)) {
+          return;
+        }
+
+        if (divider) {
+          const delta =
+            divider.axis === "col"
+              ? pointer.x - pointerDownState.origin.x
+              : pointer.y - pointerDownState.origin.y;
+          this.scene.mutateElement(
+            live,
+            applyDividerDrag(startTable, divider, delta),
+          );
+          didChange = true;
+          return;
+        }
+
+        if (anchor) {
+          const to = dropTargetForAnchor(
+            live,
+            this.scene.getNonDeletedElementsMap(),
+            anchor,
+            pointFrom<GlobalPoint>(pointer.x, pointer.y),
+          );
+          this.setState((prevState) =>
+            prevState.editingTableElement?.draggingAnchor &&
+            prevState.editingTableElement.draggingAnchor.to !== to
+              ? {
+                  editingTableElement: {
+                    ...prevState.editingTableElement,
+                    draggingAnchor: {
+                      ...prevState.editingTableElement.draggingAnchor,
+                      to,
+                    },
+                  },
+                }
+              : null,
+          );
+        }
+      },
+    );
+
+    const onPointerUp = withBatchedUpdates(() => {
+      lastPointerUp = null;
+      onPointerMove.flush();
+      window.removeEventListener(EVENT.POINTER_MOVE, onPointerMove);
+      window.removeEventListener(EVENT.POINTER_UP, onPointerUp);
+      this.cursor.applyForTool();
+
+      const live = this.scene.getNonDeletedElementsMap().get(element.id) as
+        | ExcalidrawTableElement
+        | undefined;
+      const drop = this.state.editingTableElement?.draggingAnchor;
+
+      if (anchor && live && isTableElement(live) && drop) {
+        const updates = applyAnchorDrop(live, anchor, drop.to);
+        if (Object.keys(updates).length) {
+          this.scene.mutateElement(live, updates);
+          didChange = true;
+        }
+      }
+
+      this.setState((prevState) =>
+        prevState.editingTableElement
+          ? {
+              editingTableElement: {
+                ...prevState.editingTableElement,
+                draggingDivider: null,
+                draggingAnchor: null,
+                // A reorder moves the selection with the row it moved.
+                selection:
+                  anchor && drop
+                    ? { axis: anchor.axis, indices: [drop.to] }
+                    : prevState.editingTableElement.selection,
+              },
+            }
+          : null,
+      );
+
+      // One undo step for the whole gesture, captured after the last mutation
+      // rather than before the first — scheduling it up front would record the
+      // state the drag started from and give back a half-finished table.
+      if (didChange) {
+        this.store.scheduleCapture();
+      }
+    });
+
+    lastPointerUp = onPointerUp;
+
+    window.addEventListener(EVENT.POINTER_MOVE, onPointerMove);
+    window.addEventListener(EVENT.POINTER_UP, onPointerUp);
+
+    return true;
+  };
+
+  /**
+   * LAWHA: hover feedback for a table's dividers.
+   *
+   * Only the divider is tracked; anchors are always drawn, so they need no
+   * hover state. The cursor is the affordance that tells you a drag will
+   * resize rather than move, and without it the grab zone is invisible.
+   */
+  private handleTableInteriorPointerMove = (scenePointer: {
+    x: number;
+    y: number;
+  }): void => {
+    const element = this.getInteractiveTableElement();
+
+    if (!element || this.state.editingTableElement?.draggingDivider) {
+      return;
+    }
+
+    const divider = getDividerUnderCursor(
+      element,
+      this.scene.getNonDeletedElementsMap(),
+      pointFrom<GlobalPoint>(scenePointer.x, scenePointer.y),
+      this.state.zoom.value,
+    );
+
+    if (divider) {
+      this.cursor.set(
+        divider.axis === "col"
+          ? CURSOR_TYPE.COL_RESIZE
+          : CURSOR_TYPE.ROW_RESIZE,
+      );
+    }
+
+    this.setState((prevState) => {
+      const previous =
+        prevState.editingTableElement?.elementId === element.id
+          ? prevState.editingTableElement
+          : emptyTableEditor(element.id);
+      const same =
+        previous.hoveredDivider?.axis === divider?.axis &&
+        previous.hoveredDivider?.index === divider?.index;
+
+      if (same && prevState.editingTableElement) {
+        return null;
+      }
+      return {
+        editingTableElement: { ...previous, hoveredDivider: divider },
+      };
+    });
+  };
+
   private createLawhaElementOnPointerDown = (
     pointerDownState: PointerDownState,
     type: Extract<ToolType, "table" | "matrix" | "tensor" | "code">,

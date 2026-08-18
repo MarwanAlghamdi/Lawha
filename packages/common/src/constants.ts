@@ -31,6 +31,10 @@ export const CURSOR_TYPE = {
   GRAB: "grab",
   POINTER: "pointer",
   MOVE: "move",
+  // LAWHA: a table's column and row dividers. Additive — nothing upstream
+  // reads these, and `AppCursor.set` takes any CSS cursor string.
+  COL_RESIZE: "ew-resize",
+  ROW_RESIZE: "ns-resize",
   AUTO: "",
 };
 export const POINTER_BUTTON = {
