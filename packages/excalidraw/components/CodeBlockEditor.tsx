@@ -12,6 +12,7 @@ import {
   CODE_LINE_HEIGHT,
   CODE_PAD_X,
   CODE_PAD_Y,
+  CODE_GUTTER_GAP,
   CODE_THEME,
   codeFontString,
   codeGutterWidth,
@@ -77,73 +78,98 @@ export const CodeBlockEditor = ({
     appState,
   );
 
+  const lineCount = element.source.split("\n").length;
+  const boxStyle = {
+    left: `${viewX - appState.offsetLeft}px`,
+    top: `${viewY - appState.offsetTop}px`,
+    width: `${element.width * zoom}px`,
+    height: `${(element.height - CODE_HEADER_HEIGHT) * zoom}px`,
+    transform: `translate(-50%, -50%) rotate(${element.angle}rad)`,
+    fontFamily: getFontFamilyString({ fontFamily: FONT_FAMILY.Cascadia }),
+    fontSize: `${element.fontSize * zoom}px`,
+    lineHeight: `${
+      CODE_LINE_HEIGHT * (element.fontSize / CODE_FONT_SIZE) * zoom
+    }px`,
+  } as const;
+
   return (
-    <textarea
-      ref={ref}
-      className="excalidraw-code-editor"
-      value={element.source}
-      aria-label={`Code block source, ${
-        element.language === "auto"
-          ? "language detected automatically"
-          : element.language
-      }`}
-      onChange={(event) => onChange(element, event.target.value)}
-      onBlur={onClose}
-      onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          onClose();
-          return;
-        }
-        // Tab indents rather than leaving the field. Without this a code
-        // editor is unusable, and the escape hatch is Escape, which is right
-        // above it on every keyboard.
-        if (event.key === "Tab") {
-          event.preventDefault();
-          const node = event.currentTarget;
-          const { selectionStart, selectionEnd, value } = node;
-          onChange(
-            element,
-            `${value.slice(0, selectionStart)}  ${value.slice(selectionEnd)}`,
-          );
-          requestAnimationFrame(() => {
-            node.setSelectionRange(selectionStart + 2, selectionStart + 2);
-          });
-        }
-      }}
-      style={{
-        position: "absolute",
-        left: `${viewX - appState.offsetLeft}px`,
-        top: `${viewY - appState.offsetTop}px`,
-        width: `${element.width * zoom}px`,
-        height: `${(element.height - CODE_HEADER_HEIGHT) * zoom}px`,
-        transform: `translate(-50%, -50%) rotate(${element.angle}rad)`,
-        margin: 0,
-        padding: `${CODE_PAD_Y * zoom}px ${CODE_PAD_X * zoom}px ${
-          CODE_PAD_Y * zoom
-        }px ${(CODE_PAD_X + gutter) * zoom}px`,
-        border: "none",
-        outline: `${Math.max(1, zoom)}px solid var(--color-primary)`,
-        borderRadius: 0,
-        resize: "none",
-        boxSizing: "border-box",
-        background: CODE_THEME.background,
-        color: CODE_THEME.text,
-        caretColor: CODE_THEME.text,
-        fontFamily: getFontFamilyString({ fontFamily: FONT_FAMILY.Cascadia }),
-        fontSize: `${CODE_FONT_SIZE * zoom}px`,
-        lineHeight: `${CODE_LINE_HEIGHT * zoom}px`,
-        whiteSpace: "pre",
-        overflow: "auto",
-        zIndex: 2,
-      }}
-      dir="ltr"
-      autoComplete="off"
-      autoCapitalize="off"
-      autoCorrect="off"
-      spellCheck={false}
-    />
+    <>
+      <textarea
+        ref={ref}
+        className="excalidraw-code-editor"
+        value={element.source}
+        aria-label={`Code block source, ${
+          element.language === "auto"
+            ? "language detected automatically"
+            : element.language
+        }`}
+        onChange={(event) => onChange(element, event.target.value)}
+        onBlur={onClose}
+        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+            return;
+          }
+          // Tab indents rather than leaving the field. Without this a code
+          // editor is unusable, and the escape hatch is Escape, which is right
+          // above it on every keyboard.
+          if (event.key === "Tab") {
+            event.preventDefault();
+            const node = event.currentTarget;
+            const { selectionStart, selectionEnd, value } = node;
+            onChange(
+              element,
+              `${value.slice(0, selectionStart)}  ${value.slice(selectionEnd)}`,
+            );
+            requestAnimationFrame(() => {
+              node.setSelectionRange(selectionStart + 2, selectionStart + 2);
+            });
+          }
+        }}
+        style={{
+          ...boxStyle,
+          padding: `${CODE_PAD_Y * zoom}px ${CODE_PAD_X * zoom}px ${
+            CODE_PAD_Y * zoom
+          }px ${(CODE_PAD_X + gutter) * zoom}px`,
+          background: CODE_THEME.background,
+          color: CODE_THEME.text,
+          caretColor: CODE_THEME.text,
+        }}
+        dir="ltr"
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {element.showLineNumbers && (
+        // The gutter is drawn on the canvas, which the textarea covers. Without
+        // a DOM copy the line numbers vanished the moment you started typing
+        // and came back when you stopped, which reads as the block flickering.
+        <div
+          className="excalidraw-code-editor-gutter"
+          aria-hidden="true"
+          style={{
+            ...boxStyle,
+            padding: `${CODE_PAD_Y * zoom}px ${CODE_GUTTER_GAP * zoom}px 0 0`,
+            width: `${(CODE_PAD_X + gutter) * zoom}px`,
+            // Both boxes are centred on the same point, so shifting the
+            // gutter left by half the difference in width lines its left edge
+            // up with the textarea's.
+            transform: `translate(calc(-50% - ${
+              ((element.width - CODE_PAD_X - gutter) / 2) * zoom
+            }px), -50%) rotate(${element.angle}rad)`,
+            color: CODE_THEME.gutter,
+            background: CODE_THEME.background,
+          }}
+        >
+          {Array.from({ length: lineCount }, (_, index) => (
+            <div key={index}>{index + 1}</div>
+          ))}
+        </div>
+      )}
+    </>
   );
 };
 

@@ -109,7 +109,8 @@ export const CODE_LINE_HEIGHT = 20;
 export const CODE_PAD_X = 14;
 export const CODE_PAD_Y = 12;
 export const CODE_HEADER_HEIGHT = 30;
-const GUTTER_GAP = 12;
+export const CODE_GUTTER_GAP = 12;
+const GUTTER_GAP = CODE_GUTTER_GAP;
 const RADIUS = 8;
 
 const codeFont = getFontString({

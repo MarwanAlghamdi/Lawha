@@ -48,13 +48,15 @@ export const TensorDimsEditor = ({
   }, []);
 
   const zoom = appState.zoom.value;
-  const centre = pointRotateRads(
-    pointFrom(element.x + element.width / 2, element.y + element.height / 2),
+  // Below the block, not across it. Sitting on the middle hid the very faces
+  // and labels you are editing — you could not see the change you were making.
+  const anchor = pointRotateRads(
+    pointFrom(element.x + element.width / 2, element.y + element.height + 10),
     pointFrom(element.x + element.width / 2, element.y + element.height / 2),
     element.angle as Radians,
   );
   const { x: viewX, y: viewY } = sceneCoordsToViewportCoords(
-    { sceneX: centre[0], sceneY: centre[1] },
+    { sceneX: anchor[0], sceneY: anchor[1] },
     appState,
   );
 
@@ -88,21 +90,13 @@ export const TensorDimsEditor = ({
         }
       }}
       style={{
-        position: "absolute",
         left: `${viewX - appState.offsetLeft}px`,
         top: `${viewY - appState.offsetTop}px`,
-        transform: "translate(-50%, -50%)",
+        transform: "translate(-50%, 0)",
         width: `${Math.max(120, element.width * 0.7) * zoom}px`,
         padding: `${6 * zoom}px ${8 * zoom}px`,
-        textAlign: "center",
-        border: "none",
-        outline: "2px solid var(--color-primary)",
-        borderRadius: `${4 * zoom}px`,
-        background: "var(--island-bg-color)",
-        color: element.strokeColor,
         fontFamily: getFontFamilyString({ fontFamily: FONT_FAMILY.Cascadia }),
-        fontSize: `${14 * zoom}px`,
-        zIndex: 2,
+        fontSize: `${element.fontSize * zoom}px`,
       }}
       dir="ltr"
       autoComplete="off"

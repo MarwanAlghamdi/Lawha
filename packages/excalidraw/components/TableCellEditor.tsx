@@ -134,21 +134,12 @@ export const TableCellEditor = ({
         }
       }}
       style={{
-        position: "absolute",
         left: `${viewX - appState.offsetLeft}px`,
         top: `${viewY - appState.offsetTop}px`,
         width: `${rect.width * zoom}px`,
         height: `${rect.height * zoom}px`,
         transform: `translate(-50%, -50%) rotate(${element.angle}rad)`,
-        margin: 0,
         padding: `${CELL_PADDING * zoom}px`,
-        border: "none",
-        outline: "2px solid var(--color-primary)",
-        outlineOffset: "-1px",
-        borderRadius: 0,
-        resize: "none",
-        overflow: "hidden",
-        boxSizing: "border-box",
         background,
         color: element.strokeColor,
         fontFamily: getFontFamilyString({
@@ -156,9 +147,7 @@ export const TableCellEditor = ({
         }),
         fontSize: `${DEFAULT_CELL_FONT_SIZE * zoom}px`,
         fontWeight: isHeader ? "bold" : "normal",
-        lineHeight: 1.25,
         textAlign: isMatrix ? "right" : "left",
-        zIndex: 2,
       }}
       dir="auto"
       autoComplete="off"

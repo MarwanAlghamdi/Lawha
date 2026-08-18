@@ -245,3 +245,67 @@
     }
   }
 }
+
+/*
+ * LAWHA: the three in-canvas editors — a table cell, a code block's source,
+ * a tensor's shape.
+ *
+ * These class names used to carry no CSS at all: everything was inline, so
+ * nothing themed and nothing could be overridden. What stays inline is only
+ * what depends on the element — position, size and the zoom-scaled type.
+ *
+ * `--zIndex-wysiwyg` is the token for in-canvas text editing, which is what
+ * these are; they were on `--zIndex-interactiveCanvas`, the same layer as the
+ * chrome they sit above. The focus ring is `--color-selection`, not
+ * `--color-primary`: Lawha overrides `--color-primary` with its brand accent
+ * (`lawha-bridge.scss`), and canvas-anchored UI belongs to the canvas.
+ */
+.excalidraw {
+  .excalidraw-table-cell-editor,
+  .excalidraw-code-editor,
+  .excalidraw-tensor-dims-editor {
+    position: absolute;
+    z-index: var(--zIndex-wysiwyg);
+    margin: 0;
+    border: none;
+    outline: none;
+    resize: none;
+    box-sizing: border-box;
+    box-shadow: 0 0 0 2px var(--color-selection);
+
+    &:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--color-selection);
+    }
+  }
+
+  .excalidraw-table-cell-editor {
+    overflow: hidden;
+    border-radius: 0;
+    line-height: 1.25;
+  }
+
+  .excalidraw-code-editor {
+    overflow: auto;
+    white-space: pre;
+    border-radius: 0 0 8px 8px;
+  }
+
+  .excalidraw-tensor-dims-editor {
+    text-align: center;
+    border-radius: var(--border-radius-lg);
+    background: var(--island-bg-color);
+    color: var(--text-primary-color);
+    box-shadow: 0 0 0 2px var(--color-selection), var(--shadow-island);
+  }
+}
+
+.excalidraw .excalidraw-code-editor-gutter {
+  position: absolute;
+  z-index: var(--zIndex-wysiwyg);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+}
