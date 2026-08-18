@@ -290,6 +290,89 @@ const seedAccounts = async () => {
   });
 };
 
+/**
+ * Draws a table, a matrix, a tensor block and a code block, then fills them.
+ *
+ * Through the toolbar and the pointer rather than by inserting elements, so a
+ * regression in tool selection, placement or cell editing shows up as a wrong
+ * screenshot rather than a right one.
+ */
+const drawGridObjects = async (page) => {
+  const pick = async (name) => {
+    await page.locator(".App-toolbar__extra-tools-trigger").click();
+    const item = page.locator(`[data-testid="toolbar-${name}"]`);
+    await item.waitFor({ state: "visible", timeout: 5000 });
+    await item.click();
+    await page.waitForTimeout(300);
+  };
+  const drag = async (x1, y1, x2, y2) => {
+    await page.mouse.move(x1, y1);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) {
+      await page.mouse.move(
+        x1 + ((x2 - x1) * i) / 12,
+        y1 + ((y2 - y1) * i) / 12,
+      );
+      await page.waitForTimeout(14);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(280);
+  };
+  const type = async (x, y, values) => {
+    await page.mouse.click(x, y);
+    await page.waitForTimeout(200);
+    await page.mouse.dblclick(x, y);
+    await page.waitForTimeout(350);
+    for (let i = 0; i < values.length; i++) {
+      await page.keyboard.type(values[i]);
+      if (i < values.length - 1) {
+        await page.keyboard.press("Tab");
+      }
+    }
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+  };
+
+  await pick("table");
+  await drag(330, 230, 700, 390);
+  await pick("matrix");
+  await drag(770, 230, 1010, 390);
+  await pick("tensor");
+  await drag(1090, 210, 1420, 420);
+  await pick("code");
+  await drag(330, 480, 940, 810);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+
+  await type(370, 260, [
+    "Method",
+    "Acc",
+    "F1",
+    "ResNet",
+    "0.91",
+    "0.88",
+    "ViT",
+    "0.94",
+    "0.93",
+  ]);
+  await type(800, 260, ["1", "0.2", "0", "0.2", "1", "0.4", "0", "0.4", "1"]);
+
+  // heatmap and indices, so the matrix reads as a correlation matrix
+  await page.mouse.click(880, 310);
+  await page.waitForTimeout(400);
+  for (const id of ["lawha-heatmap", "lawha-indices"]) {
+    const button = page.locator(`[data-testid="${id}"]`).first();
+    if (await button.count()) {
+      await button.click();
+      await page.waitForTimeout(300);
+    }
+  }
+  await page.keyboard.press("Escape");
+  // park the pointer off-canvas so hover chrome is not in the shot
+  await page.mouse.move(1550, 950);
+  await page.waitForTimeout(700);
+};
+
 const main = async () => {
   await seedAccounts();
   console.log(`seeded ${PEOPLE.length} accounts; ${ADMIN} is the administrator`);
@@ -401,6 +484,18 @@ const main = async () => {
     await page.waitForTimeout(1500);
     await shot(page, "share");
   }
+
+  // LAWHA: the data-science objects, on a board of their own. Drawn rather
+  // than seeded through the API so the shot proves the toolbar path works.
+  await page.goto(`${BASE}/b/${board("Q3 roadmap")}`);
+  await page.waitForSelector("canvas", { timeout: 20000 });
+  await page.waitForTimeout(3000);
+  await drawGridObjects(page);
+  await shot(page, "grid-objects");
+
+  await page.goto(`${BASE}/b/${boardId}`);
+  await page.waitForSelector("canvas", { timeout: 20000 });
+  await page.waitForTimeout(2500);
 
   // Two people on one board. A remote cursor is only drawn once its owner has
   // moved, so the second context moves and then holds still.

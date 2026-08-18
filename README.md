@@ -42,6 +42,7 @@ docker compose logs lawha-server
 ## Features
 
 - Everything Excalidraw does — infinite canvas, images, libraries, exports
+- **Tables, matrices, tensor blocks and code blocks** — one element each, not groups
 - Real-time collaboration with live cursors, names and avatars
 - Accounts, and sessions
 - Dashboard with folders, tags and search
@@ -61,6 +62,12 @@ A board is Excalidraw's canvas and tools with Lawha's chrome around it — the b
 | Light | Dark |
 | --- | --- |
 | ![A board in the light theme](docs/screenshots/board.png) | ![The same board in the dark theme](docs/screenshots/board-dark.png) |
+
+**Tables, matrices, tensors and code — drawn, not pasted.** Each is a single Excalidraw element, so it moves, rotates, resizes and undoes as one thing, takes arrows like any other shape, and is drawn with the same hand-drawn stroke as a rectangle. A matrix gets brackets, row and column indices, and a heatmap. A code block detects its own language.
+
+![A board with a results table, a correlation matrix with a heatmap, a 3-D tensor block, and a Python code block, with an arrow bound from the code to the table](docs/screenshots/grid-objects.png)
+
+Reach for them under **⋮** in the toolbar. Drag a column divider to resize, drag a row handle to reorder, click a handle to select the row or column, and use the **+** at each edge to add one. Double-click a cell to type, or a code block to edit its source.
 
 **Two people on one board.** Every cursor carries the name the server announced, not one the sender claimed, so a modified client cannot draw itself as somebody else. "Saved" means the write landed, not that it was attempted.
 
