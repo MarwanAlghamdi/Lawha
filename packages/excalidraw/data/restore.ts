@@ -34,6 +34,11 @@ import {
 } from "@excalidraw/element";
 import { normalizeFixedPoint } from "@excalidraw/element";
 import {
+  CODE_FONT_SIZE,
+  DEFAULT_CELL_FONT_SIZE,
+  TENSOR_LABEL_FONT_SIZE,
+} from "@excalidraw/element";
+import {
   updateElbowArrowPoints,
   validateElbowPoints,
 } from "@excalidraw/element";
@@ -742,6 +747,20 @@ export const restoreElement = (
         colWidths: normalise(element.colWidths, cols),
         rowHeights: normalise(element.rowHeights, rows),
         headerRow: element.headerRow !== false,
+        // Written by a build older than the one that put text size on the
+        // element. The constant is what that build drew with, so defaulting to
+        // it keeps the picture identical rather than resizing somebody's table
+        // on load.
+        fontSize:
+          typeof element.fontSize === "number" && element.fontSize > 0
+            ? element.fontSize
+            : DEFAULT_CELL_FONT_SIZE,
+        heatmap: element.heatmap === true,
+        brackets:
+          typeof element.brackets === "boolean"
+            ? element.brackets
+            : element.variant === "matrix",
+        showIndices: element.showIndices === true,
       });
     }
     case "tensor":
@@ -753,6 +772,10 @@ export const restoreElement = (
             ? element.dims
             : [64, 32, 32],
         name: typeof element.name === "string" ? element.name : null,
+        fontSize:
+          typeof element.fontSize === "number" && element.fontSize > 0
+            ? element.fontSize
+            : TENSOR_LABEL_FONT_SIZE,
       });
     case "code":
       return restoreElementWithProperties(element, {
@@ -760,6 +783,10 @@ export const restoreElement = (
         language:
           typeof element.language === "string" ? element.language : "auto",
         showLineNumbers: element.showLineNumbers !== false,
+        fontSize:
+          typeof element.fontSize === "number" && element.fontSize > 0
+            ? element.fontSize
+            : CODE_FONT_SIZE,
       });
 
     // LAWHA: a type this build does not recognise is KEPT, not dropped.

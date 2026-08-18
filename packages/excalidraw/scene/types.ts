@@ -171,11 +171,12 @@ export type ElementShapes = {
   line: Drawable[];
   text: null;
   image: null;
-  // LAWHA: these draw their own interior with a raw 2D context, so there is no
-  // roughjs shape to generate. `null` is a cached value meaning exactly that.
-  table: null;
-  tensor: null;
-  code: null;
+  // LAWHA: the container and its rules are roughjs Drawables, like `line`;
+  // the text, numbers and syntax colours inside are drawn afterwards with the
+  // raw context. `freedraw` already mixes the two in one case.
+  table: Drawable[];
+  tensor: Drawable[];
+  code: Drawable[];
   frame: null;
   magicframe: null;
 };

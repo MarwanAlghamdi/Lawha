@@ -27,6 +27,9 @@ import { normalizeText, measureText } from "./textMeasurements";
 import { wrapText } from "./textWrapping";
 
 import { isLineElement } from "./typeChecks";
+import { DEFAULT_CELL_FONT_SIZE } from "./tableElement";
+import { TENSOR_LABEL_FONT_SIZE } from "./tensorElement";
+import { CODE_FONT_SIZE } from "./codeElement";
 
 import type {
   ExcalidrawElement,
@@ -201,6 +204,10 @@ export const newTableElement = (
     variant?: ExcalidrawTableElement["variant"];
     cells?: ExcalidrawTableElement["cells"];
     headerRow?: boolean;
+    fontSize?: number;
+    heatmap?: boolean;
+    brackets?: boolean;
+    showIndices?: boolean;
   } & ElementConstructorOpts,
 ): NonDeleted<ExcalidrawTableElement> => {
   const rows = Math.max(1, opts.rows ?? 3);
@@ -220,6 +227,12 @@ export const newTableElement = (
       colWidths: even(cols),
       rowHeights: even(rows),
       headerRow: opts.headerRow ?? opts.variant !== "matrix",
+      fontSize: opts.fontSize ?? DEFAULT_CELL_FONT_SIZE,
+      // Matrix-only affordances, off for a plain table: a table of prose with
+      // brackets round it is a matrix that is not one.
+      heatmap: opts.heatmap ?? false,
+      brackets: opts.brackets ?? opts.variant === "matrix",
+      showIndices: opts.showIndices ?? false,
     },
     {},
   );
@@ -230,6 +243,7 @@ export const newTensorElement = (
   opts: {
     dims?: readonly number[];
     name?: string | null;
+    fontSize?: number;
   } & ElementConstructorOpts,
 ): NonDeleted<ExcalidrawTensorElement> =>
   newElementWith(
@@ -238,6 +252,7 @@ export const newTensorElement = (
       type: "tensor",
       dims: opts.dims?.length ? opts.dims : [64, 32, 32],
       name: opts.name ?? null,
+      fontSize: opts.fontSize ?? TENSOR_LABEL_FONT_SIZE,
     },
     {},
   );
@@ -248,6 +263,7 @@ export const newCodeElement = (
     source?: string;
     language?: string;
     showLineNumbers?: boolean;
+    fontSize?: number;
   } & ElementConstructorOpts,
 ): NonDeleted<ExcalidrawCodeElement> =>
   newElementWith(
@@ -257,6 +273,7 @@ export const newCodeElement = (
       source: opts.source ?? "",
       language: opts.language ?? "auto",
       showLineNumbers: opts.showLineNumbers ?? true,
+      fontSize: opts.fontSize ?? CODE_FONT_SIZE,
     },
     {},
   );

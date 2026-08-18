@@ -369,20 +369,28 @@ const drawElementOnCanvas = (
       context.restore();
       break;
     }
-    // LAWHA: these three draw their own interior with the raw 2D context they
-    // are handed here, which is the whole reason they are element types rather
-    // than piles of shapes — a cell fill, a token colour and a shaded face are
-    // all per-region, and an element carries one `strokeColor`.
-    case "table": {
-      drawTableOnCanvas(element, context);
-      break;
-    }
-    case "tensor": {
-      drawTensorOnCanvas(element, context);
-      break;
-    }
+    // LAWHA: hand-drawn frame, precise content — the split `freedraw` above
+    // already makes. The container and its rules come back from
+    // `generateElementShape` as roughjs Drawables and are drawn with `rc`; the
+    // text, numbers and syntax colours are per-region and drawn with the raw
+    // context, because an element carries one `strokeColor` and roughjs has no
+    // notion of a baseline.
+    case "table":
+    case "tensor":
     case "code": {
-      drawCodeOnCanvas(element, context);
+      context.lineJoin = "round";
+      context.lineCap = "round";
+
+      const shapes = ShapeCache.generateElementShape(element, renderConfig);
+      const isDarkMode = renderConfig.theme === THEME.DARK;
+
+      if (element.type === "table") {
+        drawTableOnCanvas(element, context, rc, shapes, isDarkMode);
+      } else if (element.type === "tensor") {
+        drawTensorOnCanvas(element, context, rc, shapes, isDarkMode);
+      } else {
+        drawCodeOnCanvas(element, context, rc, shapes, isDarkMode);
+      }
       break;
     }
     case "image": {

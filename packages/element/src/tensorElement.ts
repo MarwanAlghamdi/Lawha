@@ -1,4 +1,12 @@
-import { FONT_FAMILY, getFontString } from "@excalidraw/common";
+import {
+  applyDarkModeFilter,
+  FONT_FAMILY,
+  getFontString,
+} from "@excalidraw/common";
+
+import type { Drawable, Options } from "roughjs/bin/core";
+import type { RoughCanvas } from "roughjs/bin/canvas";
+import type { RoughGenerator } from "roughjs/bin/generator";
 
 import type { ExcalidrawTensorElement } from "./types";
 
@@ -19,7 +27,8 @@ const ISO_Y = 0.32;
 /** Shortest an edge may draw at, so a lopsided shape stays readable. */
 const MIN_EDGE = 26;
 
-const LABEL_FONT_SIZE = 14;
+export const TENSOR_LABEL_FONT_SIZE = 14;
+const LABEL_FONT_SIZE = TENSOR_LABEL_FONT_SIZE;
 const LABEL_GAP = 6;
 
 /**
@@ -108,58 +117,96 @@ export const tensorGeometry = (element: ExcalidrawTensorElement) => {
   };
 };
 
+/**
+ * Per-face opacity, front-most last.
+ *
+ * Three faces at one colour and three opacities rather than three chosen
+ * hexes: the static canvas transforms colours for dark mode, and three hand
+ * picked colours drift apart under that transform while one at three
+ * opacities stays a coherent solid.
+ */
+export const TENSOR_FACE_ALPHAS = [0.55, 0.75, 1] as const;
+
+/**
+ * The roughjs shapes for a tensor: its faces, back to front.
+ *
+ * A polygon per face rather than a hand-stroked path, so the block gets the
+ * hand-drawn edge, `roughness`, `strokeStyle`, `fillStyle` and the dark-mode
+ * colour transform that every other shape on the canvas gets.
+ */
+export const generateTensorShapes = (
+  element: ExcalidrawTensorElement,
+  generator: RoughGenerator,
+  options: Options,
+): Drawable[] => {
+  const { volumetric, faceX, faceY, faceWidth, faceHeight, dx, dy } =
+    tensorGeometry(element);
+  const shapes: Drawable[] = [];
+
+  if (volumetric) {
+    shapes.push(
+      generator.polygon(
+        [
+          [faceX, faceY],
+          [faceX + dx, faceY - dy],
+          [faceX + faceWidth + dx, faceY - dy],
+          [faceX + faceWidth, faceY],
+        ],
+        options,
+      ),
+    );
+    shapes.push(
+      generator.polygon(
+        [
+          [faceX + faceWidth, faceY],
+          [faceX + faceWidth + dx, faceY - dy],
+          [faceX + faceWidth + dx, faceY + faceHeight - dy],
+          [faceX + faceWidth, faceY + faceHeight],
+        ],
+        options,
+      ),
+    );
+  }
+
+  shapes.push(
+    generator.rectangle(faceX, faceY, faceWidth, faceHeight, options),
+  );
+  return shapes;
+};
+
+/**
+ * Draw the tensor's dimension labels.
+ *
+ * The faces are roughjs Drawables handed in as `shapes`; the labels are text
+ * and have to land on a baseline, so they are drawn here.
+ */
 export const drawTensorOnCanvas = (
   element: ExcalidrawTensorElement,
   context: CanvasRenderingContext2D,
+  rc: RoughCanvas,
+  shapes: Drawable[],
+  isDarkMode: boolean,
 ) => {
   const { volumetric, faceX, faceY, faceWidth, faceHeight, dx, dy } =
     tensorGeometry(element);
 
-  context.save();
-  context.strokeStyle = element.strokeColor;
-  context.lineWidth = element.strokeWidth;
-
-  const fill = element.backgroundColor;
-  const shade = (alpha: number, draw: () => void) => {
-    context.save();
-    context.globalAlpha = alpha;
-    context.fillStyle = fill;
-    context.beginPath();
-    draw();
-    context.closePath();
-    context.fill();
-    context.globalAlpha = 1;
-    context.stroke();
-    context.restore();
-  };
-
-  if (volumetric) {
-    // Three faces at one colour and three opacities rather than three chosen
-    // hexes: the interactive canvas is filtered in dark mode, and three hand
-    // picked colours drift apart under that filter while one at three
-    // opacities stays a coherent solid.
-    shade(0.55, () => {
-      context.moveTo(faceX, faceY);
-      context.lineTo(faceX + dx, faceY - dy);
-      context.lineTo(faceX + faceWidth + dx, faceY - dy);
-      context.lineTo(faceX + faceWidth, faceY);
-    });
-    shade(0.75, () => {
-      context.moveTo(faceX + faceWidth, faceY);
-      context.lineTo(faceX + faceWidth + dx, faceY - dy);
-      context.lineTo(faceX + faceWidth + dx, faceY + faceHeight - dy);
-      context.lineTo(faceX + faceWidth, faceY + faceHeight);
-    });
-  }
-
-  shade(1, () => {
-    context.rect(faceX, faceY, faceWidth, faceHeight);
+  // Alphas are applied MULTIPLICATIVELY against whatever the caller set:
+  // `drawElementOnCanvas` is handed a context whose globalAlpha is already the
+  // element's own opacity, and assigning an absolute value would ignore it.
+  const offset = shapes.length - TENSOR_FACE_ALPHAS.length;
+  const base = context.globalAlpha;
+  shapes.forEach((shape, index) => {
+    const alpha = TENSOR_FACE_ALPHAS[index - offset] ?? 1;
+    context.globalAlpha = base * alpha;
+    rc.draw(shape);
   });
+  context.globalAlpha = base;
 
-  // Labels: one per dimension, placed against the edge it measures.
-  context.fillStyle = element.strokeColor;
+  const fontSize = element.fontSize;
+  context.save();
+  context.fillStyle = applyDarkModeFilter(element.strokeColor, isDarkMode);
   context.font = getFontString({
-    fontSize: LABEL_FONT_SIZE,
+    fontSize,
     fontFamily: FONT_FAMILY.Cascadia,
   });
   context.textBaseline = "top";
@@ -187,7 +234,7 @@ export const drawTensorOnCanvas = (
     label(
       String(height ?? ""),
       faceX - LABEL_GAP,
-      faceY + faceHeight / 2 - LABEL_FONT_SIZE / 2,
+      faceY + faceHeight / 2 - fontSize / 2,
       "right",
     );
     label(
@@ -207,7 +254,7 @@ export const drawTensorOnCanvas = (
     label(
       String(rows ?? ""),
       faceX - LABEL_GAP,
-      faceY + faceHeight / 2 - LABEL_FONT_SIZE / 2,
+      faceY + faceHeight / 2 - fontSize / 2,
       "right",
     );
   }

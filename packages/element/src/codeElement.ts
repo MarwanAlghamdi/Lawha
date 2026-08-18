@@ -2,7 +2,36 @@ import { FONT_FAMILY, getFontString } from "@excalidraw/common";
 
 import { highlight } from "./codeHighlight";
 
+import type { Drawable, Options } from "roughjs/bin/core";
+import type { RoughCanvas } from "roughjs/bin/canvas";
+import type { RoughGenerator } from "roughjs/bin/generator";
+
 import type { ExcalidrawCodeElement } from "./types";
+
+/**
+ * `highlightAuto` scores nineteen grammars and then parses the result with
+ * `DOMParser`. Uncached, that ran on every repaint — including every frame of
+ * a drag. One entry is enough: a repaint asks for the same source it asked for
+ * last time, and a change invalidates it on the next call.
+ */
+let highlightCache: {
+  source: string;
+  language: string;
+  value: ReturnType<typeof highlight>;
+} | null = null;
+
+const highlightMemo = (source: string, language: string) => {
+  if (
+    highlightCache &&
+    highlightCache.source === source &&
+    highlightCache.language === language
+  ) {
+    return highlightCache.value;
+  }
+  const value = highlight(source, language as never);
+  highlightCache = { source, language, value };
+  return value;
+};
 
 /**
  * A syntax-highlighted code block, drawn directly onto the canvas.
@@ -170,16 +199,50 @@ const roundedTopPath = (
   context.closePath();
 };
 
+/**
+ * The roughjs shape for a code block: its card outline.
+ *
+ * Only the outline. The card's interior is a dark panel with coloured runs of
+ * text on it, and hachuring that would make the code unreadable — so the frame
+ * is hand-drawn and the content is not, which is the whole point of the
+ * chosen direction. `roughness` and `strokeStyle` therefore reach the border,
+ * where they are legible, and nothing else.
+ */
+export const generateCodeShapes = (
+  element: ExcalidrawCodeElement,
+  generator: RoughGenerator,
+  options: Options,
+): Drawable[] => [
+  generator.rectangle(0, 0, element.width, element.height, {
+    ...options,
+    fill: undefined,
+  }),
+];
+
 export const drawCodeOnCanvas = (
   element: ExcalidrawCodeElement,
   context: CanvasRenderingContext2D,
+  rc: RoughCanvas,
+  shapes: Drawable[],
+  _isDarkMode: boolean,
 ) => {
   const { width, height } = element;
-  const highlighted = highlight(element.source, element.language as never);
+  const highlighted = highlightMemo(element.source, element.language);
+  const fontSize = element.fontSize;
+  const lineHeight = fontSize * (CODE_LINE_HEIGHT / CODE_FONT_SIZE);
+  const padX = CODE_PAD_X * (fontSize / CODE_FONT_SIZE);
+  const padY = CODE_PAD_Y * (fontSize / CODE_FONT_SIZE);
+  const headerHeight = CODE_HEADER_HEIGHT * (fontSize / CODE_FONT_SIZE);
+  const codeFontScaled = getFontString({
+    fontSize,
+    fontFamily: FONT_FAMILY.Cascadia,
+  });
 
   context.save();
 
-  // Card
+  // The card's own dark fill, drawn crisp beneath the hand-drawn border. A
+  // hachured fill here would sit behind the code and destroy its legibility;
+  // the palette is fixed for the same reason it always was.
   context.beginPath();
   if (typeof context.roundRect === "function") {
     context.roundRect(0, 0, width, height, RADIUS);
@@ -188,34 +251,28 @@ export const drawCodeOnCanvas = (
   }
   context.fillStyle = CODE_THEME.background;
   context.fill();
+
+  // The hand-drawn border, over the crisp fill.
+  for (const shape of shapes) {
+    rc.draw(shape);
+  }
+
+  // Header, clipped to the card's rounded top corners
+  context.save();
+  roundedTopPath(context, width, headerHeight, RADIUS);
+  context.clip();
+  context.fillStyle = CODE_THEME.header;
+  context.fillRect(0, 0, width, headerHeight);
+  context.restore();
+
+  context.beginPath();
+  context.moveTo(0, headerHeight);
+  context.lineTo(width, headerHeight);
   context.strokeStyle = CODE_THEME.border;
   context.lineWidth = 1;
   context.stroke();
 
-  // Header, clipped to the card's rounded top corners
-  context.save();
-  roundedTopPath(context, width, CODE_HEADER_HEIGHT, RADIUS);
-  context.clip();
-  context.fillStyle = CODE_THEME.header;
-  context.fillRect(0, 0, width, CODE_HEADER_HEIGHT);
-  context.restore();
-
-  context.beginPath();
-  context.moveTo(0, CODE_HEADER_HEIGHT);
-  context.lineTo(width, CODE_HEADER_HEIGHT);
-  context.strokeStyle = CODE_THEME.border;
-  context.stroke();
-
-  // The three dots. Decorative, and the one thing that makes a rectangle of
-  // coloured text read instantly as "this is code".
-  ["#e06c75", "#e5c07b", "#98c379"].forEach((fill, index) => {
-    context.beginPath();
-    context.arc(14 + index * 14, CODE_HEADER_HEIGHT / 2, 4, 0, Math.PI * 2);
-    context.fillStyle = fill;
-    context.fill();
-  });
-
-  context.font = codeFont;
+  context.font = codeFontScaled;
   context.textBaseline = "top";
 
   // Language, right-aligned in the header
@@ -224,8 +281,8 @@ export const drawCodeOnCanvas = (
   context.fillStyle = CODE_THEME.languageLabel;
   context.fillText(
     highlighted.language,
-    width - CODE_PAD_X,
-    CODE_HEADER_HEIGHT / 2 - CODE_FONT_SIZE / 2,
+    width - padX,
+    headerHeight / 2 - fontSize / 2,
   );
   context.restore();
 
@@ -234,18 +291,18 @@ export const drawCodeOnCanvas = (
     element.showLineNumbers,
     context,
   );
-  const codeLeft = CODE_PAD_X + gutterWidth;
-  const top = CODE_HEADER_HEIGHT + CODE_PAD_Y;
+  const codeLeft = padX + gutterWidth;
+  const top = headerHeight + padY;
 
   // Clip the code area so an oversized snippet is cut at the card's edge
   // rather than spilling onto the canvas.
   context.save();
   context.beginPath();
-  context.rect(0, CODE_HEADER_HEIGHT, width, height - CODE_HEADER_HEIGHT);
+  context.rect(0, headerHeight, width, height - headerHeight);
   context.clip();
 
   highlighted.lines.forEach((runs, index) => {
-    const y = top + index * CODE_LINE_HEIGHT;
+    const y = top + index * lineHeight;
     if (y > height) {
       return;
     }
@@ -253,11 +310,7 @@ export const drawCodeOnCanvas = (
       context.save();
       context.textAlign = "right";
       context.fillStyle = CODE_THEME.gutter;
-      context.fillText(
-        String(index + 1),
-        CODE_PAD_X + gutterWidth - GUTTER_GAP,
-        y,
-      );
+      context.fillText(String(index + 1), padX + gutterWidth - GUTTER_GAP, y);
       context.restore();
     }
     let x = codeLeft;

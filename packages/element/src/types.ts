@@ -210,6 +210,21 @@ export type ExcalidrawTableElement = _ExcalidrawElementBase &
     rowHeights: readonly number[];
     /** Whether row 0 is styled as a header. */
     headerRow: boolean;
+    /**
+     * Cell text size.
+     *
+     * On the element rather than a module constant so that
+     * `resizeSingleElement` scales it on a bounding-box drag, exactly as it
+     * does for a text element. A constant here means a table dragged to 4x
+     * has cells four times the area and text the same size.
+     */
+    fontSize: number;
+    /** Colour the cells by value, low to high. Matrices only. */
+    heatmap: boolean;
+    /** Draw matrix brackets around the grid. Matrices only. */
+    brackets: boolean;
+    /** Draw 0-based row and column indices outside the grid. Matrices only. */
+    showIndices: boolean;
   }>;
 
 export type TableCell = {
@@ -233,6 +248,8 @@ export type ExcalidrawTensorElement = _ExcalidrawElementBase &
     dims: readonly number[];
     /** Optional name drawn on the front face. */
     name: string | null;
+    /** Dimension-label size; scaled by a bounding-box resize. */
+    fontSize: number;
   }>;
 
 /**
@@ -250,6 +267,8 @@ export type ExcalidrawCodeElement = _ExcalidrawElementBase &
     /** A highlight.js language id, or `auto` to detect on every render. */
     language: string;
     showLineNumbers: boolean;
+    /** Source text size; scaled by a bounding-box resize. */
+    fontSize: number;
   }>;
 
 export type ExcalidrawFlowchartNodeElement =

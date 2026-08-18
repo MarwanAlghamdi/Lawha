@@ -44,6 +44,9 @@ import type {
 } from "@excalidraw/excalidraw/scene/types";
 
 import { elementWithCanvasCache } from "./renderElement";
+import { generateTableShapes } from "./tableElement";
+import { generateTensorShapes } from "./tensorElement";
+import { generateCodeShapes } from "./codeElement";
 
 import {
   canBecomePolygon,
@@ -228,7 +231,13 @@ export const generateRoughOptions = (
     case "iframe":
     case "embeddable":
     case "diamond":
-    case "ellipse": {
+    case "ellipse":
+    case "table":
+    case "tensor":
+    case "code": {
+      // LAWHA: the three grid types are rectanguloid and take a background the
+      // same way, so they want the same fill options. Without a case here the
+      // `default` below throws — `generateRoughOptions` has no safe fallback.
       options.fillStyle = element.fillStyle;
       options.fill = isTransparent(element.backgroundColor)
         ? undefined
@@ -978,16 +987,44 @@ const _generateElementShape = (
 
       return shapes;
     }
+    // LAWHA: the container and its rules ARE roughjs shapes.
+    //
+    // These used to sit in the `text | image` group below and return `null`,
+    // on the reasoning that they draw themselves. That was the wrong analogy:
+    // text is glyphs and an image is pixels, neither of which has a stroke to
+    // roughen, whereas a table is ruled lines and a border — exactly what
+    // roughjs is for. Returning `null` skipped `generateRoughOptions`, and
+    // with it the hand-drawn line, `applyDarkModeFilter`, `roughness`,
+    // `strokeStyle`, `fillStyle` and `seed`. The right analogy was
+    // `rectangle`, and this is it.
+    case "table": {
+      const shape: ElementShapes["table"] = generateTableShapes(
+        element,
+        generator,
+        generateRoughOptions(element, false, isDarkMode),
+      );
+      return shape;
+    }
+    case "tensor": {
+      const shape: ElementShapes["tensor"] = generateTensorShapes(
+        element,
+        generator,
+        generateRoughOptions(element, false, isDarkMode),
+      );
+      return shape;
+    }
+    case "code": {
+      const shape: ElementShapes["code"] = generateCodeShapes(
+        element,
+        generator,
+        generateRoughOptions(element, false, isDarkMode),
+      );
+      return shape;
+    }
     case "frame":
     case "magicframe":
     case "text":
-    case "image":
-    case "table":
-    case "tensor":
-    case "code": {
-      // The Lawha types join this group for the same reason text and image are
-      // in it: they draw themselves imperatively in `drawElementOnCanvas`, so
-      // there is no roughjs shape to generate.
+    case "image": {
       const shape: ElementShapes[typeof element.type] = null;
       // we return (and cache) `null` to make sure we don't regenerate
       // `element.canvas` on rerenders

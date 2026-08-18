@@ -48,6 +48,10 @@ const LAWHA_VISUAL_KEYS = [
   "source",
   "language",
   "showLineNumbers",
+  "fontSize",
+  "heatmap",
+  "brackets",
+  "showIndices",
 ] as const;
 
 /**

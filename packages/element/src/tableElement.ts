@@ -1,4 +1,5 @@
 import {
+  applyDarkModeFilter,
   FONT_FAMILY,
   getFontString,
   getLineHeight,
@@ -7,6 +8,11 @@ import {
 
 import { getLineHeightInPx } from "./textMeasurements";
 import { getWrappedTextLines } from "./textWrapping";
+
+import type { Drawable } from "roughjs/bin/core";
+import type { RoughCanvas } from "roughjs/bin/canvas";
+import type { RoughGenerator } from "roughjs/bin/generator";
+import type { Options } from "roughjs/bin/core";
 
 import type { ExcalidrawTableElement, TableCell } from "./types";
 
@@ -28,8 +34,13 @@ import type { ExcalidrawTableElement, TableCell } from "./types";
 /** Padding between a cell's edge and its text, in scene units. */
 export const CELL_PADDING = 6;
 
-/** Below this on-screen width a column's text is not worth drawing. */
-const MIN_LEGIBLE_PX = 12;
+/**
+ * Below this cell width, in SCENE units, a column's text is not worth laying
+ * out. Named for the units it is compared in: the previous name said "PX" and
+ * was compared against a scene-unit width, which is a different number at
+ * every zoom.
+ */
+const MIN_LEGIBLE_WIDTH = 12;
 
 export const DEFAULT_CELL_FONT_SIZE = 16;
 
@@ -313,8 +324,161 @@ export const withCell = (
       : cells,
   );
 
+/** Extra space outside the grid for matrix brackets, in scene units. */
+export const BRACKET_GUTTER = 14;
+
+/** Extra space outside the grid for row/column indices, in scene units. */
+export const INDEX_GUTTER = 16;
+
 /**
- * Draw the table.
+ * The grid's box inside the element, once brackets and indices have taken
+ * their gutters. Everything else here is expressed against this box, so
+ * turning an affordance on shrinks the grid rather than letting it overflow.
+ */
+export const gridBox = (element: ExcalidrawTableElement) => {
+  const bracket = element.brackets ? BRACKET_GUTTER : 0;
+  const index = element.showIndices ? INDEX_GUTTER : 0;
+  const left = bracket + index;
+  const top = index;
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, element.width - left - bracket),
+    height: Math.max(1, element.height - top),
+  };
+};
+
+const numericCells = (element: ExcalidrawTableElement) =>
+  element.cells
+    .flat()
+    .map((cell) => Number(cell.text))
+    .filter((n) => Number.isFinite(n));
+
+/**
+ * Heatmap colour for a value, low to high.
+ *
+ * A single hue at varying lightness rather than a red-green ramp: red-green is
+ * invisible to the commonest form of colour blindness, and a matrix is read
+ * for magnitude, which lightness carries on its own.
+ */
+export const heatColor = (value: number, min: number, max: number): string => {
+  const t = max === min ? 0.5 : (value - min) / (max - min);
+  const lightness = Math.round(94 - t * 46);
+  return `hsl(217, 82%, ${lightness}%)`;
+};
+
+/** The fill a cell should get, or null for none. */
+export const cellFill = (
+  element: ExcalidrawTableElement,
+  row: number,
+  col: number,
+  range: { min: number; max: number } | null,
+): string | null => {
+  const cell = getCell(element, row, col);
+  if (cell?.fill && !isTransparent(cell.fill)) {
+    return cell.fill;
+  }
+  if (element.heatmap && range) {
+    const value = Number(cell?.text);
+    if (Number.isFinite(value)) {
+      return heatColor(value, range.min, range.max);
+    }
+  }
+  if (
+    element.headerRow &&
+    row === 0 &&
+    !isTransparent(element.backgroundColor)
+  ) {
+    return element.backgroundColor;
+  }
+  return null;
+};
+
+/**
+ * The roughjs shapes for a table: its cell fills, its rules and its border.
+ *
+ * Generated rather than stroked directly so the table gets everything an
+ * ordinary rectangle gets — the hand-drawn line, `roughness`, `strokeStyle`,
+ * `fillStyle`, `seed`, and the dark-mode colour transform, all of which live
+ * in `generateRoughOptions` and none of which a manual `context.lineTo` sees.
+ *
+ * All the rules are one `path` rather than one Drawable per line: a single
+ * seeded path keeps the wobble coherent across the grid, and it is one draw
+ * call instead of `rows + cols + 2`.
+ */
+export const generateTableShapes = (
+  element: ExcalidrawTableElement,
+  generator: RoughGenerator,
+  options: Options,
+): Drawable[] => {
+  const box = gridBox(element);
+  const xs = offsets(element.colWidths, box.width).map((x) => box.x + x);
+  const ys = offsets(element.rowHeights, box.height).map((y) => box.y + y);
+  const rows = tableRowCount(element);
+  const cols = tableColCount(element);
+  const shapes: Drawable[] = [];
+
+  const values = element.heatmap ? numericCells(element) : [];
+  const range = values.length
+    ? { min: Math.min(...values), max: Math.max(...values) }
+    : null;
+
+  // Fills first, so the rules sit on top of them rather than being half
+  // covered by the next cell's background.
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const fill = cellFill(element, row, col, range);
+      if (!fill) {
+        continue;
+      }
+      shapes.push(
+        generator.rectangle(
+          xs[col]!,
+          ys[row]!,
+          xs[col + 1]! - xs[col]!,
+          ys[row + 1]! - ys[row]!,
+          { ...options, fill, stroke: "none" },
+        ),
+      );
+    }
+  }
+
+  const path: string[] = [];
+  // Brackets replace the outer border rather than joining it. A matrix drawn
+  // with both is a boxed table with decoration on it; the bracket IS the
+  // delimiter, which is why mathematics does not also draw the box.
+  const first = element.brackets ? 1 : 0;
+  const lastX = element.brackets ? xs.length - 1 : xs.length;
+  const lastY = element.brackets ? ys.length - 1 : ys.length;
+
+  for (let i = first; i < lastX; i++) {
+    path.push(`M ${xs[i]} ${box.y} L ${xs[i]} ${box.y + box.height}`);
+  }
+  for (let i = first; i < lastY; i++) {
+    path.push(`M ${box.x} ${ys[i]} L ${box.x + box.width} ${ys[i]}`);
+  }
+
+  if (element.brackets) {
+    const arm = BRACKET_GUTTER * 0.55;
+    const l = box.x - BRACKET_GUTTER;
+    const r = box.x + box.width + BRACKET_GUTTER;
+    const t = box.y;
+    const b = box.y + box.height;
+    path.push(`M ${l + arm} ${t} L ${l} ${t} L ${l} ${b} L ${l + arm} ${b}`);
+    path.push(`M ${r - arm} ${t} L ${r} ${t} L ${r} ${b} L ${r - arm} ${b}`);
+  }
+
+  shapes.push(generator.path(path.join(" "), { ...options, fill: undefined }));
+  return shapes;
+};
+
+/**
+ * Draw the table's text.
+ *
+ * The container and its rules are roughjs Drawables handed in as `shapes`;
+ * everything below is the content, which roughjs cannot express — a cell's
+ * text has to land on a baseline, and a matrix's numbers have to be legible at
+ * any roughness. `freedraw` already mixes the two the same way.
  *
  * Called from `drawElementOnCanvas` with the context already translated to the
  * element's origin and scaled for zoom and device pixel ratio, so everything
@@ -323,57 +487,57 @@ export const withCell = (
 export const drawTableOnCanvas = (
   element: ExcalidrawTableElement,
   context: CanvasRenderingContext2D,
+  rc: RoughCanvas,
+  shapes: Drawable[],
+  isDarkMode: boolean,
 ) => {
-  const xs = columnOffsets(element);
-  const ys = rowOffsets(element);
+  for (const shape of shapes) {
+    rc.draw(shape);
+  }
+
+  const box = gridBox(element);
+  const xs = offsets(element.colWidths, box.width).map((x) => box.x + x);
+  const ys = offsets(element.rowHeights, box.height).map((y) => box.y + y);
   const rows = tableRowCount(element);
   const cols = tableColCount(element);
   const isMatrix = element.variant === "matrix";
 
   const fontFamily = isMatrix ? FONT_FAMILY.Cascadia : FONT_FAMILY.Excalifont;
-  const fontSize = DEFAULT_CELL_FONT_SIZE;
+  const fontSize = element.fontSize;
   const font = getFontString({ fontSize, fontFamily });
   const lineHeightPx = getLineHeightInPx(fontSize, getLineHeight(fontFamily));
+  const ink = applyDarkModeFilter(element.strokeColor, isDarkMode);
 
   context.save();
-
-  // Fills first, so the grid lines sit on top of them rather than being
-  // half-covered by the next cell's background.
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const cell = getCell(element, row, col);
-      const fill =
-        cell?.fill ??
-        (element.headerRow && row === 0 ? element.backgroundColor : null);
-      if (!fill || isTransparent(fill)) {
-        continue;
-      }
-      context.fillStyle = fill;
-      context.fillRect(
-        xs[col]!,
-        ys[row]!,
-        xs[col + 1]! - xs[col]!,
-        ys[row + 1]! - ys[row]!,
-      );
-    }
-  }
-
-  context.strokeStyle = element.strokeColor;
-  context.lineWidth = element.strokeWidth;
-  context.beginPath();
-  for (const x of xs) {
-    context.moveTo(x, 0);
-    context.lineTo(x, element.height);
-  }
-  for (const y of ys) {
-    context.moveTo(0, y);
-    context.lineTo(element.width, y);
-  }
-  context.stroke();
-
-  context.fillStyle = element.strokeColor;
+  context.fillStyle = ink;
   context.font = font;
   context.textBaseline = "top";
+
+  if (element.showIndices) {
+    context.save();
+    context.globalAlpha *= 0.55;
+    context.font = getFontString({
+      fontSize: fontSize * 0.72,
+      fontFamily: FONT_FAMILY.Cascadia,
+    });
+    context.textAlign = "center";
+    for (let col = 0; col < cols; col++) {
+      context.fillText(
+        String(col),
+        (xs[col]! + xs[col + 1]!) / 2,
+        box.y - INDEX_GUTTER + 2,
+      );
+    }
+    context.textAlign = "right";
+    for (let row = 0; row < rows; row++) {
+      context.fillText(
+        String(row),
+        box.x - (element.brackets ? BRACKET_GUTTER : 0) - 3,
+        (ys[row]! + ys[row + 1]!) / 2 - fontSize * 0.36,
+      );
+    }
+    context.restore();
+  }
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
@@ -385,8 +549,9 @@ export const drawTableOnCanvas = (
       const cellHeight = ys[row + 1]! - ys[row]!;
       const maxWidth = cellWidth - CELL_PADDING * 2;
       // A column dragged very narrow would otherwise spend layout time
-      // wrapping text into a sliver nobody can read.
-      if (maxWidth < MIN_LEGIBLE_PX) {
+      // wrapping text into a sliver nobody can read. Compared in scene units
+      // against a scene-unit threshold — the two must not be mixed.
+      if (maxWidth < MIN_LEGIBLE_WIDTH) {
         continue;
       }
 
