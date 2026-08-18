@@ -2,7 +2,9 @@
 
 **Status:** accepted. **Supersedes [0023](0023-composed-grid-objects.md) and [0025](0025-code-blocks-render-to-svg.md).**
 
-**Adds to `packages/`.** Divergence goes from 14 files to 60 — 19 added, 41 edited (four of the edits are snapshots, two are tests that already existed). That is the cost of this decision and the reason this ADR exists rather than a footnote to it.
+**Adds to `packages/`.** Divergence goes from 14 files to 63 — 21 added, 42 edited. That is the cost of this decision and the reason this ADR exists rather than a footnote to it.
+
+**Amended 2026-08-18** after a screenshot-led review found the first implementation had bypassed roughjs entirely. See §"The rendering split, corrected" below; the decision to make these native types is unchanged, the way they draw is not.
 
 **Affects:** `packages/element/src/{tableElement,tableElementEditor,tensorElement,codeElement,codeHighlight}.ts` (new); `packages/excalidraw/components/{TableCellEditor,CodeBlockEditor,TensorDimsEditor,LawhaElementActions}.tsx` (new); `packages/excalidraw/renderer/tableHandles.ts` (new); dispatch points in `types.ts`, `typeChecks.ts`, `newElement.ts`, `shape.ts`, `bounds.ts`, `collision.ts`, `distance.ts`, `comparisons.ts`, `renderElement.ts`, `staticSvgScene.ts`, `restore.ts`, `mutateElement.ts`, `scene/types.ts`, `constants.ts`, `Tools.tsx`, `Toolbar.tsx`, `Actions.tsx`, `icons.tsx`, `locales/en.json`, `App.tsx`. Deletes `excalidraw-app/lawha/{table,dataviz,code}/*`.
 
@@ -86,3 +88,57 @@ What is dropped is the SVG round-trip. 0025 chose "render to SVG, place as an im
 - **Existing boards are not migrated.** A table or code block already drawn under 0023/0025 stays as loose rectangles and an image. The `customData.lawha` tags carry enough to rebuild them and a converter is possible later; this is said out loud here rather than discovered.
 - **`packages/element` now depends on `highlight.js`.** It moved with the file it belongs to.
 - **Undo is one step per gesture**, captured after the last mutation rather than before the first — scheduling it up front would record the state the drag started from and give back a half-finished table.
+
+---
+
+## Amendment — the rendering split, corrected
+
+The first implementation of this ADR put `table`, `tensor` and `code` in `_generateElementShape`'s `frame | magicframe | text | image` group, which returns `null`, with a comment saying they draw themselves so there is no roughjs shape to generate.
+
+**That was the wrong analogy, and it is worth recording why**, because it is the kind of mistake that looks correct in a diff. Text and image belong in that group because neither has a stroke to roughen — one is glyphs, the other pixels. A table is ruled lines and a border, which is exactly what roughjs exists to draw. The right analogy was never `text`; it was `rectangle`.
+
+Returning `null` skipped `generateRoughOptions`, and with it six things at once:
+
+| Lost | Symptom |
+| --- | --- |
+| roughjs stroke | machine-straight lines on a hand-drawn canvas |
+| `applyDarkModeFilter` | `#1e1e1e` on a `#121212` canvas — invisible in dark mode |
+| `roughness` | the panel's **Sloppiness** control did nothing |
+| `strokeStyle` | the panel's **Stroke style** did nothing |
+| `fillStyle` | hachure and cross-hatch cell fills impossible |
+| `seed` | no per-element stroke variation |
+
+The elements carried all four properties; the renderer ignored every one.
+
+### The chosen split
+
+**Roughjs draws the container and the rules. The raw context draws the content.** `freedraw` already mixes the two inside one `case` (`renderElement.ts:350-370`), and `line`/`arrow` already return `Drawable[]`, so neither the shape type nor the renderer needed inventing.
+
+Content stays precise on purpose: a matrix is read for its numbers and a code block for its tokens, and roughening either trades legibility for texture in the one place legibility is the whole point.
+
+### What else the review found, and fixed
+
+- **SVG export emitted a dashed grey placeholder** for all three types — the unknown-type branch this ADR itself added, for types a build cannot draw, which this build plainly can. Invisible on canvas and in PNG, because only SVG takes that path.
+- **`fontSize` was a module constant**, so `resizeSingleElement` could not reach it and a table dragged to 2× kept 16px text while its cells doubled.
+- **The anchor strip started at `DEFAULT_TRANSFORM_HANDLE_SPACING`** — the exact offset the transform handles are placed at — so corner handles were drawn on top of it, and a fixed 12px target sat beside a 28px one on touch.
+- **The properties panel hand-rolled every control**, including a 44px blue `CheckboxItem` built for export dialogs and a row of text buttons whose CSS was entirely dead against `.excalidraw .buttonList button`. It also never mounted in `CompactShapeActions`, so a table was unconfigurable on a tablet.
+- **`highlight()` ran unmemoised on every repaint** — `highlightAuto` over nineteen grammars plus a `DOMParser` parse, per frame of a drag.
+
+### Two things the review got wrong, recorded so they are not re-fixed
+
+- The cell editor was reported as using the wrong font. It does not: `getComputedStyle` returns `Excalifont` and `document.fonts.check` passes.
+- `document.fonts.check('16px Cascadia')` returning false looked like the matrix and code editors falling back to a generic monospace. It cannot happen: the element renders before its editor can open, and that render registers the face. Measured true with a code block present.
+
+### Notion, adopted deliberately
+
+Three behaviours, each for a stated reason rather than because Notion has them:
+
+- **anchors and buttons are revealed by hover**, so a table at rest carries exactly the chrome a rectangle carries;
+- **a `+` at the trailing edge of each axis** adds a row or column where you are already looking, instead of sending you to a side panel;
+- **the column anchor is the selection control** — click selects, drag reorders.
+
+### Still not done
+
+- CSV/TSV paste, LaTeX in cells and per-column types are not implemented. Each is its own feature.
+- No migration for boards drawn under 0023/0025.
+- RTL locales (`ar-SA`, `he-IL`, `fa-IR`) do not carry the new keys and fall back to English.
