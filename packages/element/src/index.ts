@@ -64,6 +64,7 @@ export * from "./collision";
 export * from "./comparisons";
 export * from "./containerCache";
 export * from "./codeElement";
+export * from "./codeHighlight";
 export * from "./cropElement";
 export * from "./delta";
 export * from "./distance";

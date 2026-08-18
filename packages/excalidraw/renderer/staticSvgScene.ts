@@ -42,6 +42,13 @@ import type {
   NonDeletedExcalidrawElement,
 } from "@excalidraw/element/types";
 
+import {
+  renderCodeToSvg,
+  renderTableTextToSvg,
+  renderTensorTextToSvg,
+  TENSOR_SVG_FACE_ALPHAS as TENSOR_FACE_ALPHAS,
+} from "./lawhaSvg";
+
 import type { RenderableElementsMap, SVGRenderConfig } from "../scene/types";
 import type { AppState, BinaryFiles } from "../types";
 import type { Drawable } from "roughjs/bin/core";
@@ -175,6 +182,65 @@ const renderElementToSvg = (
       );
 
       addToRoot(g || node, element);
+      break;
+    }
+    // LAWHA: hand-drawn container from the same cached shape the canvas uses,
+    // then the text on top — the split `drawTableOnCanvas` makes. Without
+    // this these fall into the unknown-type branch below and export as a
+    // dashed placeholder, which is what they did until now.
+    case "table":
+    case "tensor":
+    case "code": {
+      const shapes = ShapeCache.generateElementShape(element, renderConfig);
+      const group = svgRoot.ownerDocument!.createElementNS(SVG_NS, "g");
+
+      if (element.type === "code") {
+        renderCodeToSvg(element, group);
+      }
+
+      shapes.forEach((shape, index) => {
+        const drawn = roughSVGDrawWithPrecision(
+          rsvg,
+          shape,
+          MAX_DECIMALS_FOR_SVG_EXPORT,
+        );
+        if (element.type === "tensor") {
+          const offset = shapes.length - TENSOR_FACE_ALPHAS.length;
+          const alpha = TENSOR_FACE_ALPHAS[index - offset] ?? 1;
+          if (alpha !== 1) {
+            drawn.setAttribute("fill-opacity", `${alpha}`);
+          }
+        }
+        drawn.setAttribute("stroke-linecap", "round");
+        group.appendChild(drawn);
+      });
+
+      if (element.type === "table") {
+        renderTableTextToSvg(element, group, renderConfig);
+      } else if (element.type === "tensor") {
+        renderTensorTextToSvg(element, group, renderConfig);
+      }
+
+      if (opacity !== 1) {
+        group.setAttribute("stroke-opacity", `${opacity}`);
+        group.setAttribute("fill-opacity", `${opacity}`);
+      }
+      group.setAttribute(
+        "transform",
+        `translate(${offsetX || 0} ${
+          offsetY || 0
+        }) rotate(${degree} ${cx} ${cy})`,
+      );
+
+      const wrapped = maybeWrapNodesInFrameClipPath(
+        element,
+        root,
+        [group],
+        renderConfig.frameRendering,
+        elementsMap,
+      );
+
+      addToRoot(wrapped || group, element);
       break;
     }
     case "iframe":

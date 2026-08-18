@@ -52,7 +52,10 @@ export interface CellRect {
 }
 
 /** Running offsets from a fraction array: [0, f0, f0+f1, ...] scaled by total. */
-const offsets = (fractions: readonly number[], total: number): number[] => {
+export const offsets = (
+  fractions: readonly number[],
+  total: number,
+): number[] => {
   const out: number[] = [0];
   let acc = 0;
   for (const fraction of fractions) {
@@ -335,6 +338,15 @@ export const INDEX_GUTTER = 16;
  * their gutters. Everything else here is expressed against this box, so
  * turning an affordance on shrinks the grid rather than letting it overflow.
  */
+export const gridLines = (element: ExcalidrawTableElement) => {
+  const box = gridBox(element);
+  return {
+    box,
+    xs: offsets(element.colWidths, box.width).map((x) => box.x + x),
+    ys: offsets(element.rowHeights, box.height).map((y) => box.y + y),
+  };
+};
+
 export const gridBox = (element: ExcalidrawTableElement) => {
   const bracket = element.brackets ? BRACKET_GUTTER : 0;
   const index = element.showIndices ? INDEX_GUTTER : 0;
