@@ -1,6 +1,8 @@
 # 0023 — Tables and tensors are composed, not a new element type
 
-**Status:** accepted. **Adds nothing to `packages/`. The divergence stays at 14 files, and that is the point of this ADR rather than a footnote to it.**
+**Status:** superseded by [0026](0026-native-grid-elements.md). The reopening bar this ADR set — observed data loss — was never met; what reopened it was a UX judgement, and 0026 says so in those words. The `restore.ts` argument below is real and 0026 answers it directly rather than inheriting it.
+
+<sub>Original status: **Status:** accepted. **Adds nothing to `packages/`. The divergence stays at 14 files, and that is the point of this ADR rather than a footnote to it.**</sub>
 
 **Affects:** `excalidraw-app/lawha/table/*` (new), `excalidraw-app/lawha/dataviz/*` (new), one mount point in `excalidraw-app/App.tsx`, one button in `LawhaTopBar`. No file under `packages/` is touched.
 

@@ -1,6 +1,8 @@
 # 0025 — A code block is a picture, and the source is what we keep
 
-**Status:** accepted. **Adds nothing to `packages/`; divergence stays at 14 files.** Adds one dependency, `highlight.js`.
+**Status:** superseded by [0026](0026-native-grid-elements.md). The highlight.js reasoning below survives verbatim — `codeHighlight.ts` moved into `packages/element/` unchanged. What was dropped is the SVG round-trip, whose cost was a double-click that entered image cropping.
+
+<sub>Original status: **Status:** accepted. **Adds nothing to `packages/`; divergence stays at 14 files.** Adds one dependency, `highlight.js`.</sub>
 
 **Affects:** `excalidraw-app/lawha/code/*` (new), one tool in `lawha/table/gridTools.ts`, one mount in `excalidraw-app/App.tsx`.
 
