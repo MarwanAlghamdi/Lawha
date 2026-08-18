@@ -1,0 +1,26 @@
+-- A link can let visitors edit, when the owner says so (ADR 0024).
+--
+-- Until now `link_access = 'edit'` widened editing to signed-in link holders
+-- only; an account-less visitor watched whatever the link said. That was a
+-- deliberate product decision, recorded in three places, and this migration is
+-- the storage half of reversing it *by choice* rather than by default.
+--
+-- **A new column rather than a fourth `link_access` value, and the reason is
+-- not style.** `link_access` carries `CHECK (link_access IN ('none','view',
+-- 'edit'))` from `001_init.sql:42`. SQLite cannot alter a CHECK constraint, so
+-- widening it means rebuilding `boards` — create, copy, drop, rename. Six
+-- tables reference `boards (id)` with `ON DELETE CASCADE`, `db/index.ts` sets
+-- `PRAGMA foreign_keys = ON`, and `db/migrate.ts` runs every migration inside a
+-- transaction, where `PRAGMA foreign_keys` is a **no-op** — SQLite refuses to
+-- change it mid-transaction. So the DROP would cascade through board_scenes,
+-- board_members, board_invites, files and the folder links, and take the whole
+-- deployment's data with it. There is no rebuild precedent in this directory
+-- for exactly that reason; 003 used ALTER TABLE and so does this.
+--
+-- The owner still sees one radio group with four options. Where the fourth one
+-- is stored is not their problem.
+--
+-- **Defaults to 0, so nothing changes on deploy.** Every board already set to
+-- 'edit' keeps meaning "signed-in link holders", and an operator who wants the
+-- wider setting picks it per board, deliberately.
+ALTER TABLE boards ADD COLUMN guest_edit INTEGER NOT NULL DEFAULT 0;

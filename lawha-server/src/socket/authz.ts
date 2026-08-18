@@ -23,6 +23,16 @@ export interface BoardAccessRecord {
   ownerId: string;
   linkAccess: LinkAccess;
   deletedAt: number | null;
+  /**
+   * Whether `linkAccess: "edit"` also reaches an account-less visitor.
+   *
+   * Deliberately a second field rather than a fourth `LinkAccess` value: the
+   * owner picks one of four options, but "can a stranger with a link edit" and
+   * "can a stranger without an account edit" are two questions, and collapsing
+   * them would make the narrower answer unreachable. See ADR 0024, and
+   * migration 018 for why the column is additive.
+   */
+  guestEdit: boolean;
 }
 
 export interface BoardAccessSource {
@@ -49,6 +59,14 @@ export interface BoardPermission {
   /** Membership role, or null when access comes from the link alone. */
   role: BoardRole | null;
   linkAccess: LinkAccess;
+  /**
+   * Whether an "edit" link reaches visitors with no account.
+   *
+   * Travels beside `linkAccess` rather than being fetched separately wherever
+   * it is needed: they encode one choice by the owner, and two call sites
+   * reading them from two places is how the pair drifts apart.
+   */
+  guestEdit: boolean;
   isOwner: boolean;
   /** True when no board row exists yet and the config allows that. */
   isUnknownBoard: boolean;
@@ -59,6 +77,7 @@ const DENIED: BoardPermission = {
   canEdit: false,
   role: null,
   linkAccess: "none",
+  guestEdit: false,
   isOwner: false,
   isUnknownBoard: false,
 };
@@ -100,6 +119,7 @@ export const createResolveBoardPermission = (
         canEdit: true,
         role: null,
         linkAccess: "none",
+        guestEdit: false,
         isOwner: false,
         isUnknownBoard: true,
       };
@@ -109,21 +129,31 @@ export const createResolveBoardPermission = (
       return DENIED;
     }
 
-    const base = { linkAccess: board.linkAccess, isUnknownBoard: false };
+    const base = {
+      linkAccess: board.linkAccess,
+      guestEdit: board.guestEdit,
+      isUnknownBoard: false,
+    };
 
     if (principal.isGuest) {
-      // Guests are VIEW ONLY, and that is a product decision rather than a
-      // consequence of `link_access`: an account-less visitor holding a link
-      // watches, whatever the link says. `link_access = "edit"` widens editing
-      // to signed-in link holders only.
+      // A guest edits only when the owner has said so twice: the link must be
+      // on `edit`, AND `guest_edit` must be set for this board. Both default to
+      // the narrow answer, so a board nobody has touched behaves exactly as it
+      // did before ADR 0024.
+      //
+      // Still scoped to one board. `guestBoardId` is what stops a pass minted
+      // for a shared board becoming a key to every other shared board on the
+      // server, and widening the *role* does not widen the *scope* — invariant
+      // 22 survives this change, amended rather than retired.
       const allowed =
         principal.guestBoardId === boardId && board.linkAccess !== "none";
+      const mayEdit = allowed && board.linkAccess === "edit" && board.guestEdit;
 
       return {
         ...base,
         canAccess: allowed,
-        canEdit: false,
-        role: allowed ? "viewer" : null,
+        canEdit: mayEdit,
+        role: allowed ? (mayEdit ? "editor" : "viewer") : null,
         isOwner: false,
       };
     }

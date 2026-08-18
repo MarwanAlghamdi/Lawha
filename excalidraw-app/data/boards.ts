@@ -12,6 +12,8 @@ export interface BoardSummary {
   name: string;
   ownerId: string;
   linkAccess: LinkAccess;
+  /** Whether an "edit" link also reaches visitors with no account (ADR 0024). */
+  guestEdit: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -42,6 +44,8 @@ export interface BoardAccess {
   canEdit: boolean;
   role: BoardRole | null;
   linkAccess: LinkAccess;
+  /** Whether an "edit" link reaches visitors with no account (ADR 0024). */
+  guestEdit: boolean;
   /** True when the server minted an account-less, board-scoped pass for us. */
   isGuest: boolean;
 }
@@ -53,6 +57,7 @@ export const FULL_BOARD_ACCESS: BoardAccess = {
   canEdit: true,
   role: null,
   linkAccess: "none",
+  guestEdit: false,
   isGuest: false,
 };
 
@@ -79,6 +84,7 @@ export const NO_BOARD_ACCESS: BoardAccess = {
   canEdit: false,
   role: null,
   linkAccess: "none",
+  guestEdit: false,
   isGuest: false,
 };
 
@@ -208,14 +214,23 @@ export const resolveBoardAccess = async (
   }
 };
 
+/**
+ * Set what the link does.
+ *
+ * Two fields rather than one because the owner's four options are stored as a
+ * pair — see ADR 0024 and migration 018. `guestEdit` is always sent, never left
+ * out, so moving back to a narrower option cannot leave the wider flag set on a
+ * board whose link no longer justifies it.
+ */
 export const setBoardLinkAccess = async (
   boardId: string,
   linkAccess: LinkAccess,
+  guestEdit = false,
 ): Promise<BoardSummary | null> => {
   const result = await request<{ board: BoardSummary }>(`/boards/${boardId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ linkAccess }),
+    body: JSON.stringify({ linkAccess, guestEdit }),
   });
   return result?.board ?? null;
 };
@@ -230,6 +245,7 @@ export interface BoardMembership {
   members: BoardMember[];
   role: BoardRole;
   linkAccess: LinkAccess;
+  guestEdit: boolean;
 }
 
 export const listBoardMembers = (boardId: string): Promise<BoardMembership> =>

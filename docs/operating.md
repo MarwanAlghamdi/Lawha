@@ -51,9 +51,18 @@ Three words, like `brave-otter-lantern`. They grant someone membership on a boar
 
 ### Share links
 
-For people who should see a board without joining it. Link visitors are a narrower principal than members: they get a server-minted pass scoped to that single board and no write rights anywhere.
+For people who should see a board without joining it. Link visitors are a narrower principal than members: they get a server-minted pass scoped to that single board, and it is a key to nothing else on the server.
 
-- **Create a link** — open the board → **Share** → **Link access** → choose **Viewer** (read-only) or **Editor** (can edit the board, but not access your other boards, not change permissions, not see the admin panel), press **Create link**.
+- **Create a link** — open the board → **Share** → **Link access** → choose one of four, press **Create link**:
+
+  | Option | Who can draw |
+  | --- | --- |
+  | **Off** | The link is dead. |
+  | **Can view** | Nobody. Everyone with the link watches. |
+  | **Can edit** | Anyone with the link **who is signed in**. Visitors without an account still only watch. |
+  | **Can edit, including visitors** | Anyone with the link, account or not. |
+
+  The fourth option is off by default and is chosen per board — existing boards keep whatever they were set to (ADR 0024). In every case a link visitor can edit *that board* and nothing else: not your other boards, not permissions, not the admin panel. If someone should be a durable, named collaborator, give them an invite code instead — it makes them a member with a real role.
 - **Copy the link** — the Share panel shows the link in every address this deployment publishes (LAN addresses and the ngrok URL if it is running).
 - **Revoke a link** — press the button.
 

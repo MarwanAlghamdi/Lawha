@@ -7,5 +7,9 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are run by vitest from the repo root, never shipped. Without this the
+  // build emits `dist/**/*.test.js` carrying an import of `vitest`, which is not
+  // a dependency of this package — a broken module inside the runtime image.
+  "exclude": ["src/**/*.test.ts"]
 }

@@ -31,6 +31,15 @@ const createBoardSchema = z.object({
 const updateBoardSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   linkAccess: z.enum(["none", "view", "edit"]).optional(),
+  /**
+   * Whether `linkAccess: "edit"` also reaches visitors with no account.
+   *
+   * The owner sees one radio group with four options; the fourth is
+   * `linkAccess: "edit"` with this set. Two fields rather than a fourth enum
+   * value because widening `link_access`'s CHECK constraint would mean
+   * rebuilding `boards` — see migration 018 and ADR 0024.
+   */
+  guestEdit: z.boolean().optional(),
   /** Replaces the board's tags wholesale; [] clears them. */
   tagIds: z.array(z.string()).max(20).optional(),
   /**
@@ -126,6 +135,7 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
           canEdit: permission.canEdit,
           role: permission.role,
           linkAccess: permission.linkAccess,
+          guestEdit: permission.guestEdit,
           isGuest: !req.user,
         });
         return;
@@ -152,11 +162,13 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
       res.json({
         exists: true,
         canAccess: minted.canAccess,
-        // Never true. A visitor with no account watches, whatever the link
-        // says — see the product decision recorded in socket/authz.ts.
+        // True only when the owner chose "can edit, including visitors" for
+        // this board — the resolver in socket/authz.ts owns that decision, and
+        // this route reports it rather than re-deciding it (ADR 0024).
         canEdit: minted.canEdit,
         role: minted.role,
         linkAccess: minted.linkAccess,
+        guestEdit: minted.guestEdit,
         isGuest: true,
       });
     }),
@@ -318,9 +330,14 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
       // against a fresh one.
       const nameChanged =
         params.name !== undefined && params.name !== board.name;
+      // Either half of the owner's one choice counts as a change: promoting a
+      // board from "can edit" to "can edit, including visitors" moves no
+      // `link_access` value at all, and a connected guest has to be told.
       const linkAccessChanged =
-        params.linkAccess !== undefined &&
-        params.linkAccess !== board.link_access;
+        (params.linkAccess !== undefined &&
+          params.linkAccess !== board.link_access) ||
+        (params.guestEdit !== undefined &&
+          params.guestEdit !== (board.guest_edit === 1));
 
       /**
        * Up to four writes across three repositories, and until now they were
@@ -357,12 +374,20 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
         if (params.name !== undefined) {
           ctx.boards.rename(boardId, params.name);
         }
-        if (params.linkAccess !== undefined) {
+        if (params.linkAccess !== undefined || params.guestEdit !== undefined) {
           // Only an owner may change who can reach the board by link.
           if (!permission.isOwner) {
             throw forbidden("Only the owner can change sharing.");
           }
-          ctx.boards.setLinkAccess(boardId, params.linkAccess);
+          // Written as a pair, always. The two columns encode one radio group,
+          // so sending only half of it — "can view" without clearing
+          // `guest_edit` — would leave a board whose stored state answers a
+          // question the owner did not ask.
+          ctx.boards.setLinkAccess(
+            boardId,
+            params.linkAccess ?? board.link_access,
+            params.guestEdit ?? board.guest_edit === 1,
+          );
         }
         if (params.tagIds !== undefined) {
           // Tags belong to the person doing the labelling, so someone else's

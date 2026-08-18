@@ -108,8 +108,12 @@ export const createFilesRouter = (ctx: LawhaContext): Router => {
   // fetch your own images (they are already in your file map) and signed-in
   // peers were fine; only accountless guests broke.
   //
-  // The asymmetry is the point: reading is widened to guests, writing is not.
-  const auth = requireAuth(ctx);
+  // Reading is widened to guests unconditionally. Writing is widened only when
+  // the board's owner has turned on guest editing, and that decision is made by
+  // `resolveBoardPermission`, not here — this middleware's job is to let a guest
+  // reach the handler so `canEdit` can answer (ADR 0024).
+  // One middleware now, not two. Both routes admit a guest and then judge them
+  // on `canEdit`; the strict variant had exactly one call site and it has moved.
   const authOrGuest = requireAuth(ctx, { allowGuest: true });
 
   /**
@@ -163,7 +167,13 @@ export const createFilesRouter = (ctx: LawhaContext): Router => {
 
   router.post(
     "/:scope/:containerId/:fileId",
-    auth,
+    // `authOrGuest`, matching `scene.ts`: a guest is let in and then judged on
+    // `canEdit` below. Bouncing them at the door with a 401 would mean a guest
+    // the owner *had* allowed to draw could not paste or drop an image — they
+    // would draw fine and every image byte would 401, which is the board-with-
+    // holes failure this file's own comment above describes, arriving from the
+    // other direction.
+    authOrGuest,
     uploadBodyParser,
     asyncHandler(async (req, res) => {
       const { scope, containerId, fileId } = req.params as {
@@ -211,7 +221,7 @@ export const createFilesRouter = (ctx: LawhaContext): Router => {
           containerId,
           fileId,
           byteSize: existing.size,
-          createdBy: req.user!.id,
+          createdBy: req.user?.id ?? null,
         });
         res.status(200).json({ existed: true });
         return;
@@ -228,7 +238,7 @@ export const createFilesRouter = (ctx: LawhaContext): Router => {
         containerId,
         fileId,
         byteSize: body.byteLength,
-        createdBy: req.user!.id,
+        createdBy: req.user?.id ?? null,
       });
 
       res.status(201).json({ existed: false });
@@ -237,7 +247,9 @@ export const createFilesRouter = (ctx: LawhaContext): Router => {
 
   router.get(
     "/:scope/:containerId/:fileId",
-    // The read side, and the only place in this file a guest is admitted.
+    // The read side. A guest is admitted here whatever the link says: reading
+    // is what a share link is for, and refusing the bytes of a board they can
+    // already open renders it with holes where the pictures were.
     // Note what is deliberately not done here: `principalOf(req)` is used
     // instead of `req.user!.id`, because `requireAuth` leaves `req.user`
     // undefined for a guest on purpose. Flipping the flag on its own would

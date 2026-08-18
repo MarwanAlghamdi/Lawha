@@ -2,7 +2,7 @@ import { copyTextToSystemClipboard } from "@excalidraw/excalidraw/clipboard";
 import { useCopyStatus } from "@excalidraw/excalidraw/hooks/useCopiedIndicator";
 import { useId, useMemo, useState } from "react";
 
-import { LINK_OPTIONS } from "./shareModel";
+import { LINK_OPTIONS, linkOptionOf } from "./shareModel";
 import { buildShareTargets } from "./shareOrigins";
 import { ShareTargets } from "./ShareTargets";
 
@@ -91,9 +91,11 @@ interface ShareLinkAccessProps {
   /** Where else this deployment answers. Empty means "offer only `link`". */
   origins: ShareOrigins;
   linkAccess: LinkAccess;
+  /** Whether the "edit" link also reaches visitors with no account (ADR 0024). */
+  guestEdit: boolean;
   isOwner: boolean;
   busy: boolean;
-  onSetAccess: (access: LinkAccess) => void;
+  onSetAccess: (access: LinkAccess, guestEdit: boolean) => void;
   onStopSharing: () => void;
 }
 
@@ -115,6 +117,7 @@ export const ShareLinkAccess = ({
   boardId,
   origins,
   linkAccess,
+  guestEdit,
   isOwner,
   busy,
   onSetAccess,
@@ -153,9 +156,7 @@ export const ShareLinkAccess = ({
   // `link_access = "none"`, so the link this panel offered to copy was one that
   // 403s for everyone who follows it.
   const isLinkLive = linkAccess !== "none" && !!link;
-  const currentOption =
-    LINK_OPTIONS.find((option) => option.value === linkAccess) ??
-    LINK_OPTIONS[0];
+  const currentOption = linkOptionOf(linkAccess, guestEdit);
 
   return (
     <section className="lw-share__section">
@@ -173,10 +174,10 @@ export const ShareLinkAccess = ({
             <LinkOption
               key={option.value}
               option={option}
-              selected={linkAccess === option.value}
+              selected={currentOption.value === option.value}
               idPrefix={idPrefix}
               disabled={busy}
-              onSelect={() => onSetAccess(option.value)}
+              onSelect={() => onSetAccess(option.linkAccess, option.guestEdit)}
             />
           ))}
         </div>
@@ -191,13 +192,19 @@ export const ShareLinkAccess = ({
       )}
 
       {/*
-       * Invariant 22, said out loud. A link visitor is a narrower principal
-       * than a signed-in user, so "Can edit" is a ceiling and not a promise;
-       * without this line the setting reads as if it hands out drawing rights
-       * to the whole network.
+       * Invariant 22, as amended by ADR 0024, said out loud.
+       *
+       * The old sentence here — "people without an account can only watch,
+       * whatever the link says" — was unconditional, and one of the four
+       * options above now makes it false. Rather than delete the note, it says
+       * the part that is still true and still surprising: a visitor is a
+       * narrower principal either way, scoped to this one board and carrying no
+       * account. What changed is the role, never the scope.
        */}
       <p className="lw-mono lw-share__note">
-        people without an account can only watch, whatever the link says
+        {currentOption.guestEdit
+          ? "visitors stay anonymous, and reach only this board"
+          : "people without an account can only watch, whatever the link says"}
       </p>
 
       {isLinkLive ? (

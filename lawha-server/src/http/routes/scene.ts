@@ -148,10 +148,15 @@ export const createSceneRouter = (ctx: LawhaContext): Router => {
         throw forbidden("You have view-only access to this board.");
       }
 
-      // Separately from the above, because `permission` is null for a board
-      // that does not exist yet: an account-less visitor must not be able to
-      // conjure one, and the row below needs an owner that is a real user.
-      if (!req.user) {
+      // Separately from the above, and narrower than it used to be. This guard
+      // exists for the *unclaimed* id case: `permission` is null when no board
+      // row exists yet, the writer becomes its owner, and an owner has to be a
+      // real user — an account-less visitor must not be able to conjure a board.
+      //
+      // It used to be unconditional, which meant a guest was refused here even
+      // when `canEdit` above had just allowed them, and no setting the owner
+      // could pick would have changed that (ADR 0024).
+      if (!permission && !req.user) {
         throw forbidden("You have view-only access to this board.");
       }
 
@@ -179,6 +184,8 @@ export const createSceneRouter = (ctx: LawhaContext): Router => {
       // The board row may not exist yet when auth is disabled and the client
       // invented a board id locally.
       if (!ctx.boards.findById(boardId)) {
+        // Guarded above: reaching here with no board row means `permission` was
+        // null, which the guard only lets past for a signed-in user.
         ctx.boards.create({ id: boardId, ownerId: req.user!.id });
       }
 
@@ -188,7 +195,11 @@ export const createSceneRouter = (ctx: LawhaContext): Router => {
         sceneVersion,
         iv,
         ciphertext: payload,
-        updatedBy: req.user!.id,
+        // Null for a guest editor. `board_scenes.updated_by` is a nullable FK
+        // (`001_init.sql:95`), so an unattributed write needs no migration —
+        // and "we do not know who" is the honest value, given a guest has no
+        // account to name.
+        updatedBy: req.user?.id ?? null,
       });
 
       if (!result.ok) {

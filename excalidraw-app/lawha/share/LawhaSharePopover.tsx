@@ -100,7 +100,7 @@ const ShareBody = ({
   const [revision, setRevision] = useState(0);
 
   const isOwner = access.role === "owner";
-  const { linkAccess } = access;
+  const { linkAccess, guestEdit } = access;
 
   const refreshMembers = useCallback(async () => {
     if (!boardId || access.role === null) {
@@ -265,11 +265,12 @@ const ShareBody = ({
         boardId={boardId}
         origins={origins}
         linkAccess={linkAccess}
+        guestEdit={guestEdit}
         isOwner={isOwner}
         busy={busy}
-        onSetAccess={(next: LinkAccess) =>
+        onSetAccess={(next: LinkAccess, nextGuestEdit: boolean) =>
           void run(async () => {
-            await collabAPI?.setLinkAccess(next);
+            await collabAPI?.setLinkAccess(next, nextGuestEdit);
           })
         }
         onStopSharing={() =>

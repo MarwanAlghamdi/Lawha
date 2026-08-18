@@ -4,13 +4,24 @@ import type { BoardMember, BoardRole, LinkAccess } from "../../data/boards";
 import type { LawhaPresenceUser } from "../hooks/useLawhaPresence";
 
 /**
- * The three link settings, each with the consequence of choosing it.
+ * A link choice, as the owner experiences it: one radio group, four options.
+ *
+ * Stored as two fields — `linkAccess` plus `guestEdit` — because widening
+ * `link_access`'s CHECK constraint would mean rebuilding the `boards` table
+ * through six cascading foreign keys (migration 018). That is storage's
+ * problem, not the owner's, so this module is where the two representations
+ * meet and nothing above it has to know there are two.
+ */
+export type LinkChoice = "none" | "view" | "edit" | "edit-all";
+
+/**
+ * The four link settings, each with the consequence of choosing it.
  *
  * `hint` used to be shown only to people who could not change the setting,
  * which is backwards: the person deciding is the one who needs to know what the
  * decision does. Every reader now sees the sentence, and the owner sees all
- * three side by side — the difference between "view" and "edit" is not
- * something a two-word chip can carry.
+ * four side by side — the difference between them is not something a two-word
+ * chip can carry.
  *
  * The sentences are deliberately order-independent ("people added to this
  * board" rather than "the people listed below"): this panel reorders its
@@ -18,26 +29,55 @@ import type { LawhaPresenceUser } from "../hooks/useLawhaPresence";
  * section which is not rendered is worse than no hint.
  */
 export const LINK_OPTIONS: {
-  value: LinkAccess;
+  value: LinkChoice;
+  linkAccess: LinkAccess;
+  guestEdit: boolean;
   label: string;
   hint: string;
 }[] = [
   {
     value: "none",
+    linkAccess: "none",
+    guestEdit: false,
     label: "Off",
     hint: "The link is dead. Only people added to this board can open it, and a link that gets forwarded is refused.",
   },
   {
     value: "view",
+    linkAccess: "view",
+    guestEdit: false,
     label: "Can view",
     hint: "Anyone with the link can open this board and watch it live. They cannot draw, move or delete anything.",
   },
   {
     value: "edit",
+    linkAccess: "edit",
+    guestEdit: false,
     label: "Can edit",
     hint: "Anyone with the link who is signed in can draw on this board. Visitors without an account still only watch.",
   },
+  {
+    value: "edit-all",
+    linkAccess: "edit",
+    guestEdit: true,
+    label: "Can edit, including visitors",
+    hint: "Anyone with the link can draw on this board, including visitors with no account. They stay anonymous, and they can only reach this one board.",
+  },
 ];
+
+/** Which of the four options a stored pair represents. */
+export const linkChoiceOf = (
+  linkAccess: LinkAccess,
+  guestEdit: boolean,
+): LinkChoice =>
+  linkAccess === "edit" && guestEdit ? "edit-all" : (linkAccess as LinkChoice);
+
+export const linkOptionOf = (linkAccess: LinkAccess, guestEdit: boolean) => {
+  const value = linkChoiceOf(linkAccess, guestEdit);
+  return (
+    LINK_OPTIONS.find((option) => option.value === value) ?? LINK_OPTIONS[0]
+  );
+};
 
 export const ROLE_LABEL: Record<BoardRole, string> = {
   owner: "Owner",

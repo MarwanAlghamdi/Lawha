@@ -69,6 +69,7 @@ export const createMembersRouter = (ctx: LawhaContext): Router => {
         members: ctx.members.list(board.id),
         role: permission.role,
         linkAccess: permission.linkAccess,
+        guestEdit: permission.guestEdit,
       });
     }),
   );

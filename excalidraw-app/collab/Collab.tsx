@@ -852,13 +852,23 @@ class Collab extends PureComponent<CollabProps, CollabState> {
     return board !== null;
   };
 
-  setLinkAccess = async (linkAccess: LinkAccess): Promise<boolean> => {
+  /**
+   * The owner's one choice, carried as the two fields it is stored in.
+   *
+   * `guestEdit` is not optional here on purpose: every caller has just read a
+   * radio option that knows both halves, and a default would let a future call
+   * site set "can edit" while silently leaving the wider flag as it was.
+   */
+  setLinkAccess = async (
+    linkAccess: LinkAccess,
+    guestEdit: boolean,
+  ): Promise<boolean> => {
     const boardId = this.portal.roomId ?? getCurrentBoardId();
     if (!boardId) {
       return false;
     }
 
-    const board = await setBoardLinkAccess(boardId, linkAccess);
+    const board = await setBoardLinkAccess(boardId, linkAccess, guestEdit);
     await this.refreshBoardAccess(boardId);
     return board !== null;
   };

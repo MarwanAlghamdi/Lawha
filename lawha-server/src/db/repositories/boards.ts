@@ -15,6 +15,7 @@ export interface BoardRow {
   updated_at: number;
   last_opened_at: number | null;
   link_access: LinkAccess;
+  guest_edit: number;
   thumbnail_path: string | null;
   thumbnail_updated_at: number | null;
   is_archived: number;
@@ -26,6 +27,8 @@ export interface PublicBoard {
   name: string;
   ownerId: string;
   linkAccess: LinkAccess;
+  /** Whether `linkAccess: "edit"` reaches visitors with no account (ADR 0024). */
+  guestEdit: boolean;
   createdAt: number;
   updatedAt: number;
   lastOpenedAt: number | null;
@@ -58,6 +61,7 @@ export const toPublicBoard = (
   name: row.name,
   ownerId: row.owner_id,
   linkAccess: row.link_access,
+  guestEdit: row.guest_edit === 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   lastOpenedAt: row.last_opened_at,
@@ -131,10 +135,23 @@ export class BoardsRepository {
       .run(name, Date.now(), boardId);
   }
 
-  setLinkAccess(boardId: string, linkAccess: LinkAccess): void {
+  /**
+   * The owner picks one option; it is stored as two columns (ADR 0024).
+   *
+   * `guestEdit` is written on every call rather than only when it is true, so
+   * moving from "can edit, including visitors" back to "can view" cannot leave
+   * the wider flag behind on a board whose link no longer justifies it.
+   */
+  setLinkAccess(
+    boardId: string,
+    linkAccess: LinkAccess,
+    guestEdit = false,
+  ): void {
     this.db
-      .prepare("UPDATE boards SET link_access = ?, updated_at = ? WHERE id = ?")
-      .run(linkAccess, Date.now(), boardId);
+      .prepare(
+        "UPDATE boards SET link_access = ?, guest_edit = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(linkAccess, guestEdit ? 1 : 0, Date.now(), boardId);
   }
 
   touch(boardId: string, at = Date.now()): void {
@@ -218,16 +235,22 @@ export class BoardsRepository {
   getBoardAccess(boardId: string): BoardAccessRecord | null {
     const row = this.db
       .prepare(
-        "SELECT owner_id, link_access, deleted_at FROM boards WHERE id = ?",
+        "SELECT owner_id, link_access, guest_edit, deleted_at FROM boards WHERE id = ?",
       )
       .get(boardId) as
-      | { owner_id: string; link_access: LinkAccess; deleted_at: number | null }
+      | {
+          owner_id: string;
+          link_access: LinkAccess;
+          guest_edit: number;
+          deleted_at: number | null;
+        }
       | undefined;
 
     return row
       ? {
           ownerId: row.owner_id,
           linkAccess: row.link_access,
+          guestEdit: row.guest_edit === 1,
           deletedAt: row.deleted_at,
         }
       : null;

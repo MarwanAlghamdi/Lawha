@@ -46,7 +46,7 @@ docker compose logs lawha-server
 - Accounts, and sessions
 - Dashboard with folders, tags and search
 - **Invite codes** — three words that add someone as viewer or editor
-- **Share links** — view access without an account
+- **Share links** — view, or edit, without an account — the owner chooses per board
 - **Undo that survives closing the tab**
 - **Admin panel** — accounts, an audit log with no delete, backups you can download
 - **Reset links, not passwords** — admins hand over a one-time link and hold nothing
