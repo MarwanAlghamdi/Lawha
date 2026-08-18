@@ -138,6 +138,18 @@ key-material/
 # What a reader needs instead is already published: the 25 invariants live in
 # `docs/lawha-roadmap.md` §2 and every decision has an ADR in `docs/adr/`.
 CLAUDE.md
+# `AGENTS.md` is byte-identical to CLAUDE.md — `gitnexus analyze` writes both
+# from one template. Ignoring only the first would publish the second by
+# accident, which is the opposite of what the paragraph above decided.
+AGENTS.md
+# `SKILL.md` is the same class of artefact: which skill to reach for in this
+# checkout. Useful here, noise to somebody who just wants to run Lawha.
+SKILL.md
 docs/superpowers/
 docs/agents/
 .github/copilot-instructions.md
+
+# Obsidian opens a folder as a vault by writing these into it. The project's
+# knowledge base lives in a vault one directory up, not in the repo.
+.obsidian/
+*.base
