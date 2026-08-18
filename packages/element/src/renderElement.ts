@@ -64,6 +64,9 @@ import {
   isImageElement,
 } from "./typeChecks";
 import { getContainingFrame } from "./frame";
+import { drawTableOnCanvas } from "./tableElement";
+import { drawTensorOnCanvas } from "./tensorElement";
+import { drawCodeOnCanvas } from "./codeElement";
 import { getCornerRadius } from "./utils";
 
 import { ShapeCache } from "./shape";
@@ -364,6 +367,22 @@ const drawElementOnCanvas = (
       }
 
       context.restore();
+      break;
+    }
+    // LAWHA: these three draw their own interior with the raw 2D context they
+    // are handed here, which is the whole reason they are element types rather
+    // than piles of shapes — a cell fill, a token colour and a shaded face are
+    // all per-region, and an element carries one `strokeColor`.
+    case "table": {
+      drawTableOnCanvas(element, context);
+      break;
+    }
+    case "tensor": {
+      drawTensorOnCanvas(element, context);
+      break;
+    }
+    case "code": {
+      drawCodeOnCanvas(element, context);
       break;
     }
     case "image": {
@@ -847,7 +866,12 @@ export const renderElement = (
     case "image":
     case "text":
     case "iframe":
-    case "embeddable": {
+    case "embeddable":
+    case "table":
+    case "tensor":
+    case "code": {
+      // The Lawha types join this group so they inherit the cached offscreen
+      // canvas, rotation and the export path for free.
       if (renderConfig.isExporting) {
         const [x1, y1, x2, y2] = getElementAbsoluteCoords(element, elementsMap);
         const centerX = (x1 + x2) / 2;
