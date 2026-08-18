@@ -1002,6 +1002,7 @@ const _generateElementShape = (
         element,
         generator,
         generateRoughOptions(element, false, isDarkMode),
+        isDarkMode,
       );
       return shape;
     }

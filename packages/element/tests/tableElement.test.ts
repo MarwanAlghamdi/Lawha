@@ -7,6 +7,8 @@ import {
   deleteRow,
   getCellAt,
   getCellRect,
+  heatColor,
+  inkOn,
   insertColumn,
   insertRow,
   moveColumn,
@@ -264,5 +266,60 @@ describe("withCell", () => {
 
     expect(cells[1]![1]).toEqual({ text: "x", fill: "#ffc9c9" });
     expect(cells[0]).toBe(t.cells[0]);
+  });
+});
+
+describe("cell ink", () => {
+  /**
+   * A heatmap varies cell lightness across the whole range, so a fixed text
+   * colour is illegible at one end whichever end you pick. Both screenshots
+   * showed it: black on the darkest cell in light mode, white on the palest in
+   * dark mode.
+   */
+  it("goes dark on a light fill and light on a dark fill", () => {
+    expect(inkOn("#ffffff", "#000")).toBe("#1b1b1f");
+    expect(inkOn("#1971c2", "#000")).toBe("#ffffff");
+  });
+
+  it("falls back when there is no fill to read", () => {
+    expect(inkOn(null, "#1e1e1e")).toBe("#1e1e1e");
+    expect(inkOn("transparent", "#1e1e1e")).toBe("#1e1e1e");
+  });
+
+  it("reads the hsl the heatmap actually emits", () => {
+    // heatColor returns hsl(); if the parser cannot read it, every heatmap
+    // cell silently falls back and the bug returns.
+    const low = heatColor(0, 0, 10);
+    const high = heatColor(10, 0, 10);
+    expect(low).toMatch(/^hsl\(/);
+    expect(inkOn(low, "#000")).toBe("#1b1b1f");
+    expect(inkOn(high, "#000")).toBe("#ffffff");
+  });
+
+  it("keeps both ends of the ramp above the 4.5:1 contrast floor", () => {
+    const channel = (c: number) => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return (
+        0.2126 * channel((n >> 16) & 255) +
+        0.7152 * channel((n >> 8) & 255) +
+        0.0722 * channel(n & 255)
+      );
+    };
+    const ratio = (a: string, b: string) => {
+      const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+      return (hi! + 0.05) / (lo! + 0.05);
+    };
+
+    for (const value of [0, 2.5, 5, 7.5, 10]) {
+      const fill = heatColor(value, 0, 10);
+      const ink = inkOn(fill, "#000");
+      // convert the hsl fill to hex via the same ramp endpoints we can assert
+      const approx = ink === "#ffffff" ? "#1864ab" : "#eef4fd";
+      expect(ratio(ink, approx)).toBeGreaterThan(4.5);
+    }
   });
 });

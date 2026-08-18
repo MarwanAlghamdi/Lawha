@@ -379,6 +379,98 @@ export const heatColor = (value: number, min: number, max: number): string => {
   return `hsl(217, 82%, ${lightness}%)`;
 };
 
+/**
+ * Ink that stays legible on a given cell fill.
+ *
+ * A heatmap varies the cell colour by two orders of magnitude of lightness, so
+ * a fixed text colour is illegible at one end of the ramp whichever end you
+ * pick: black on the darkest cell in light mode, white on the palest cell in
+ * dark mode. Chosen by the fill's own relative luminance, per WCAG, so both
+ * ends clear the 4.5:1 bar.
+ */
+export const inkOn = (fill: string | null, fallback: string): string => {
+  if (!fill || isTransparent(fill)) {
+    return fallback;
+  }
+  const rgb = parseColor(fill);
+  if (!rgb) {
+    return fallback;
+  }
+  const channel = (c: number) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * channel(rgb[0]) +
+    0.7152 * channel(rgb[1]) +
+    0.0722 * channel(rgb[2]);
+  return luminance > 0.45 ? "#1b1b1f" : "#ffffff";
+};
+
+/** `#rgb`, `#rrggbb` and `hsl(h, s%, l%)` — everything `cellFill` can emit. */
+const parseColor = (color: string): [number, number, number] | null => {
+  const hex = color.trim();
+  if (hex.startsWith("#")) {
+    const digits = hex.slice(1);
+    const full =
+      digits.length === 3
+        ? digits
+            .split("")
+            .map((d) => d + d)
+            .join("")
+        : digits;
+    if (full.length < 6) {
+      return null;
+    }
+    return [
+      parseInt(full.slice(0, 2), 16),
+      parseInt(full.slice(2, 4), 16),
+      parseInt(full.slice(4, 6), 16),
+    ];
+  }
+  const rgbMatch = hex.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (rgbMatch) {
+    return [Number(rgbMatch[1]), Number(rgbMatch[2]), Number(rgbMatch[3])];
+  }
+  const hsl = hex.match(/hsl\(\s*([\d.]+)[,\s]+([\d.]+)%[,\s]+([\d.]+)%\s*\)/i);
+  if (!hsl) {
+    return null;
+  }
+  const h = Number(hsl[1]) / 360;
+  const sat = Number(hsl[2]) / 100;
+  const light = Number(hsl[3]) / 100;
+  if (sat === 0) {
+    const v = Math.round(light * 255);
+    return [v, v, v];
+  }
+  const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+  const p = 2 * light - q;
+  const toRgb = (t: number) => {
+    let x = t;
+    if (x < 0) {
+      x += 1;
+    }
+    if (x > 1) {
+      x -= 1;
+    }
+    if (x < 1 / 6) {
+      return p + (q - p) * 6 * x;
+    }
+    if (x < 1 / 2) {
+      return q;
+    }
+    if (x < 2 / 3) {
+      return p + (q - p) * (2 / 3 - x) * 6;
+    }
+    return p;
+  };
+  return [
+    Math.round(toRgb(h + 1 / 3) * 255),
+    Math.round(toRgb(h) * 255),
+    Math.round(toRgb(h - 1 / 3) * 255),
+  ];
+};
+
 /** The fill a cell should get, or null for none. */
 export const cellFill = (
   element: ExcalidrawTableElement,
@@ -422,6 +514,7 @@ export const generateTableShapes = (
   element: ExcalidrawTableElement,
   generator: RoughGenerator,
   options: Options,
+  isDarkMode = false,
 ): Drawable[] => {
   const box = gridBox(element);
   const xs = offsets(element.colWidths, box.width).map((x) => box.x + x);
@@ -449,7 +542,15 @@ export const generateTableShapes = (
           ys[row]!,
           xs[col + 1]! - xs[col]!,
           ys[row + 1]! - ys[row]!,
-          { ...options, fill, stroke: "none" },
+          // Filtered here, exactly as `generateRoughOptions` filters an
+          // element's own `backgroundColor`. `drawTableOnCanvas` reads the
+          // same filtered value to choose the cell's ink, so the two cannot
+          // disagree about what colour the cell actually is.
+          {
+            ...options,
+            fill: applyDarkModeFilter(fill, isDarkMode),
+            stroke: "none",
+          },
         ),
       );
     }
@@ -519,6 +620,10 @@ export const drawTableOnCanvas = (
   const font = getFontString({ fontSize, fontFamily });
   const lineHeightPx = getLineHeightInPx(fontSize, getLineHeight(fontFamily));
   const ink = applyDarkModeFilter(element.strokeColor, isDarkMode);
+  const values = element.heatmap ? numericCells(element) : [];
+  const range = values.length
+    ? { min: Math.min(...values), max: Math.max(...values) }
+    : null;
 
   context.save();
   context.fillStyle = ink;
@@ -574,6 +679,15 @@ export const drawTableOnCanvas = (
       context.beginPath();
       context.rect(xs[col]!, ys[row]!, cellWidth, cellHeight);
       context.clip();
+
+      // A cell painted by the heatmap sets its own ink, so the text stays
+      // legible at both ends of the ramp. `applyDarkModeFilter` is applied to
+      // the fill first, because that is what the cell will actually be.
+      const fill = cellFill(element, row, col, range);
+      context.fillStyle = inkOn(
+        fill ? applyDarkModeFilter(fill, isDarkMode) : null,
+        ink,
+      );
 
       const isHeader = element.headerRow && row === 0;
       context.font = isHeader
