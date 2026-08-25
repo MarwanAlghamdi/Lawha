@@ -6,7 +6,18 @@ import {
   type ExcalidrawElementSkeleton,
 } from "../transform";
 
-import type { ExcalidrawArrowElement } from "../types";
+import {
+  CODE_HEADER_HEIGHT,
+  CODE_LINE_HEIGHT,
+  CODE_PAD_Y,
+} from "../codeElement";
+
+import type {
+  ExcalidrawArrowElement,
+  ExcalidrawCodeElement,
+  ExcalidrawTableElement,
+  ExcalidrawTensorElement,
+} from "../types";
 
 const opts = { regenerateIds: false };
 
@@ -963,6 +974,182 @@ describe("Test Transform", () => {
         versionNonce: expect.any(Number),
         id: expect.any(String),
       });
+    });
+  });
+
+  // LAWHA: the fork's own element types are reachable from the skeleton API.
+  describe("Lawha element types", () => {
+    it("builds a blank table from rows and cols", () => {
+      const [table] = convertToExcalidrawElements(
+        [{ type: "table", x: 0, y: 0, rows: 2, cols: 4 }],
+        opts,
+      ) as ExcalidrawTableElement[];
+
+      expect(table.type).toBe("table");
+      expect(table.variant).toBe("table");
+      expect(table.cells.length).toBe(2);
+      expect(table.cells[0].length).toBe(4);
+      expect(table.colWidths.length).toBe(4);
+      expect(table.rowHeights.length).toBe(2);
+      // The invariant the whole geometry rests on.
+      expect(table.colWidths.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+      expect(table.rowHeights.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+      // Sized from its shape, not from a 100x100 square.
+      expect(table.width).toBe(400);
+      expect(table.height).toBe(64);
+    });
+
+    it("derives the grid shape from cells when they are given", () => {
+      const [table] = convertToExcalidrawElements(
+        [
+          {
+            type: "table",
+            x: 0,
+            y: 0,
+            cells: [
+              [
+                { text: "model", fill: null, color: null },
+                { text: "acc", fill: null, color: null },
+              ],
+              [
+                { text: "ours", fill: null, color: null },
+                { text: "94.1", fill: null, color: null },
+              ],
+            ],
+          },
+        ],
+        opts,
+      ) as ExcalidrawTableElement[];
+
+      expect(table.cells.length).toBe(2);
+      expect(table.cells[0].length).toBe(2);
+      expect(table.cells[1][1].text).toBe("94.1");
+      expect(table.colWidths.length).toBe(2);
+    });
+
+    it("normalises a ragged cells array rather than desynchronising the widths", () => {
+      const [table] = convertToExcalidrawElements(
+        [
+          {
+            type: "table",
+            x: 0,
+            y: 0,
+            cells: [
+              [
+                { text: "a", fill: null, color: null },
+                { text: "b", fill: null, color: null },
+                { text: "c", fill: null, color: null },
+              ],
+              [{ text: "d", fill: null, color: null }],
+            ],
+          },
+        ],
+        opts,
+      ) as ExcalidrawTableElement[];
+
+      // Every row is the width the colWidths array describes. A short row is
+      // padded rather than left to index past the end of the grid.
+      expect(table.colWidths.length).toBe(3);
+      table.cells.forEach((row) => expect(row.length).toBe(3));
+      expect(table.cells[1][1].text).toBe("");
+    });
+
+    it("carries the matrix variant's own defaults", () => {
+      const [matrix] = convertToExcalidrawElements(
+        [{ type: "table", x: 0, y: 0, variant: "matrix", rows: 2, cols: 2 }],
+        opts,
+      ) as ExcalidrawTableElement[];
+
+      expect(matrix.variant).toBe("matrix");
+      expect(matrix.textAlign).toBe("right");
+      expect(matrix.brackets).toBe(true);
+      expect(matrix.headerRow).toBe(false);
+    });
+
+    it("builds a tensor with the dims it was given", () => {
+      const [tensor] = convertToExcalidrawElements(
+        [{ type: "tensor", x: 0, y: 0, dims: [512, 14, 14], name: "conv5" }],
+        opts,
+      ) as ExcalidrawTensorElement[];
+
+      expect(tensor.type).toBe("tensor");
+      expect(tensor.dims).toEqual([512, 14, 14]);
+      expect(tensor.name).toBe("conv5");
+    });
+
+    it("sizes a code block from its line count", () => {
+      const source = "def forward(self, x):\n    return self.net(x)";
+      const [code] = convertToExcalidrawElements(
+        [{ type: "code", x: 0, y: 0, source, language: "python" }],
+        opts,
+      ) as ExcalidrawCodeElement[];
+
+      expect(code.type).toBe("code");
+      expect(code.source).toBe(source);
+      expect(code.language).toBe("python");
+      // Header + vertical padding + two lines. Exact, unlike the width.
+      expect(code.height).toBe(
+        CODE_HEADER_HEIGHT + CODE_PAD_Y * 2 + 2 * CODE_LINE_HEIGHT,
+      );
+      expect(code.width).toBeGreaterThan(0);
+    });
+
+    it("lets an arrow bind to a table, which assertNever used to refuse", () => {
+      // The binding switch only constructed rectangle/ellipse/diamond and
+      // asserted on everything else, so `bindBindingElement` was handed
+      // `undefined` and a class diagram's arrows could never attach to the
+      // tables they point at.
+      const errors: unknown[] = [];
+      const spy = vi
+        .spyOn(console, "error")
+        .mockImplementation((...args) => errors.push(args));
+
+      const elements = convertToExcalidrawElements(
+        [
+          { type: "table", id: "t1", x: 0, y: 0, rows: 2, cols: 1 },
+          { type: "table", id: "t2", x: 0, y: 300, rows: 2, cols: 1 },
+          {
+            type: "arrow",
+            x: 100,
+            y: 120,
+            start: { id: "t1" },
+            end: { id: "t2" },
+          },
+        ] as ExcalidrawElementSkeleton[],
+        opts,
+      );
+
+      spy.mockRestore();
+      // `transform.ts` reports every binding failure through console.error and
+      // nothing else, so a silent one is the failure mode to guard.
+      expect(errors).toEqual([]);
+
+      const arrow = elements.find((el) => el.type === "arrow") as any;
+      expect(arrow.startBinding?.elementId).toBe("t1");
+      expect(arrow.endBinding?.elementId).toBe("t2");
+
+      // The tables are still tables, not rebuilt as rectangles.
+      expect(elements.filter((el) => el.type === "table")).toHaveLength(2);
+    });
+
+    it("respects an explicit width and height over the derived one", () => {
+      const [table] = convertToExcalidrawElements(
+        [
+          {
+            type: "table",
+            x: 0,
+            y: 0,
+            rows: 2,
+            cols: 2,
+            width: 640,
+            height: 80,
+          },
+        ],
+        opts,
+      ) as ExcalidrawTableElement[];
+
+      expect(table.width).toBe(640);
+      expect(table.height).toBe(80);
     });
   });
 });

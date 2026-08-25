@@ -21,14 +21,26 @@ import type { MarkOptional } from "@excalidraw/common/utility-types";
 import { bindBindingElement } from "./binding";
 import {
   newArrowElement,
+  newCodeElement,
   newElement,
   newFrameElement,
   newImageElement,
   newLinearElement,
   newMagicFrameElement,
+  newTableElement,
+  newTensorElement,
   newTextElement,
   type ElementConstructorOpts,
 } from "./newElement";
+
+// LAWHA: sizing constants for a generated code block. See the "code" case.
+import {
+  CODE_FONT_SIZE,
+  CODE_HEADER_HEIGHT,
+  CODE_LINE_HEIGHT,
+  CODE_PAD_X,
+  CODE_PAD_Y,
+} from "./codeElement";
 import { measureText, normalizeText } from "./textMeasurements";
 import { isArrowElement } from "./typeChecks";
 
@@ -45,6 +57,7 @@ import { Scene } from "./Scene";
 import type {
   ExcalidrawArrowElement,
   ExcalidrawBindableElement,
+  ExcalidrawCodeElement,
   ExcalidrawElement,
   ExcalidrawFrameElement,
   ExcalidrawFreeDrawElement,
@@ -54,6 +67,8 @@ import type {
   ExcalidrawLinearElement,
   ExcalidrawMagicFrameElement,
   ExcalidrawSelectionElement,
+  ExcalidrawTableElement,
+  ExcalidrawTensorElement,
   ExcalidrawTextElement,
   FileId,
   FontFamilyValues,
@@ -209,7 +224,29 @@ export type ExcalidrawElementSkeleton =
       type: "magicframe";
       children: readonly ExcalidrawElement["id"][];
       name?: string;
-    } & Partial<ExcalidrawMagicFrameElement>);
+    } & Partial<ExcalidrawMagicFrameElement>)
+  // LAWHA: the fork's own element types. Without these a generated scene
+  // cannot contain a table, tensor or code block at all — which is what blocks
+  // Mermaid, model import and any programmatic generation from reaching them.
+  // The union only widens, so no upstream caller's input stops type-checking.
+  | ({
+      type: "table";
+      x: number;
+      y: number;
+      /** A blank grid this size. Ignored when `cells` is given. */
+      rows?: number;
+      cols?: number;
+    } & Partial<ExcalidrawTableElement>)
+  | ({
+      type: "tensor";
+      x: number;
+      y: number;
+    } & Partial<ExcalidrawTensorElement>)
+  | ({
+      type: "code";
+      x: number;
+      y: number;
+    } & Partial<ExcalidrawCodeElement>);
 
 const DEFAULT_LINEAR_ELEMENT_PROPS = {
   width: 100,
@@ -217,6 +254,12 @@ const DEFAULT_LINEAR_ELEMENT_PROPS = {
 };
 
 const DEFAULT_DIMENSION = 100;
+
+// LAWHA: a fresh 3x3 table at DEFAULT_DIMENSION would give 33px columns, which
+// is under the width at which `drawTableOnCanvas` bothers to lay text out at
+// all. Size a generated table from its shape instead of from a square.
+const DEFAULT_TABLE_COL_WIDTH = 100;
+const DEFAULT_TABLE_ROW_HEIGHT = 32;
 
 const bindTextToContainer = (
   container: ExcalidrawElement,
@@ -323,6 +366,17 @@ const bindLinearElementToElement = (
             break;
           }
           default: {
+            // LAWHA: an element that ALREADY EXISTS is a usable binding target
+            // whatever its type. Without this an arrow could not bind to a
+            // `table`, `tensor`, `code`, `image` or `frame` — they fell through
+            // to `assertNever` and `bindBindingElement` was then handed
+            // `undefined`. Upstream callers see no change: rectangle, ellipse
+            // and diamond are still constructed by the cases above, and a
+            // skeleton naming a type with no existing element still asserts.
+            if (existingElement) {
+              startBoundElement = existingElement;
+              break;
+            }
             assertNever(
               linearElement as never,
               `Unhandled element start type "${start.type}"`,
@@ -399,6 +453,12 @@ const bindLinearElementToElement = (
             break;
           }
           default: {
+            // LAWHA: see the note on the start binding above. Same gap, same
+            // fix, and both ends need it or an arrow binds only one way.
+            if (existingElement) {
+              endBoundElement = existingElement;
+              break;
+            }
             assertNever(
               linearElement as never,
               `Unhandled element end type "${endType}"`,
@@ -632,6 +692,81 @@ export const convertToExcalidrawElements = (
       case "iframe":
       case "embeddable": {
         excalidrawElement = element;
+        break;
+      }
+      // LAWHA: table, tensor and code. Each delegates to the constructor that
+      // already owns its defaults, so there is one definition of what a new one
+      // of these is and this is not a second copy of it.
+      case "table": {
+        const rows = Math.max(1, element.rows ?? element.cells?.length ?? 3);
+        const cols = Math.max(
+          1,
+          element.cols ?? element.cells?.[0]?.length ?? 3,
+        );
+
+        // `colWidths`/`rowHeights` are deliberately not taken from the
+        // skeleton: they are fractions that must sum to 1 and must match the
+        // grid's shape, and `newTableElement` derives both. A caller cannot
+        // hand us a ragged `cells` array and get a table whose cells overlap,
+        // because the normalisation below makes that unrepresentable.
+        const cells = element.cells
+          ? Array.from({ length: rows }, (_, row) =>
+              Array.from(
+                { length: cols },
+                (_, col) =>
+                  element.cells?.[row]?.[col] ?? {
+                    text: "",
+                    fill: null,
+                    color: null,
+                  },
+              ),
+            )
+          : undefined;
+
+        excalidrawElement = newTableElement({
+          ...element,
+          cells,
+          rows,
+          cols,
+          width: element.width || cols * DEFAULT_TABLE_COL_WIDTH,
+          height: element.height || rows * DEFAULT_TABLE_ROW_HEIGHT,
+        });
+        break;
+      }
+      case "tensor": {
+        excalidrawElement = newTensorElement({
+          ...element,
+          width: element.width || DEFAULT_DIMENSION,
+          height: element.height || DEFAULT_DIMENSION,
+        });
+        break;
+      }
+      case "code": {
+        const lines = (element.source ?? "").split("\n");
+
+        // Estimated, not measured: `measureCodeBlock` needs a canvas context
+        // and a skeleton is converted wherever its caller happens to run.
+        // Height is exact — it is the line count — and the width errs wide,
+        // which costs a resize rather than clipping somebody's source.
+        const widestChars = lines.reduce(
+          (max, line) => Math.max(max, line.length),
+          0,
+        );
+
+        excalidrawElement = newCodeElement({
+          ...element,
+          width:
+            element.width ||
+            Math.ceil(
+              CODE_PAD_X * 2 +
+                Math.max(220, widestChars * CODE_FONT_SIZE * 0.6),
+            ),
+          height:
+            element.height ||
+            CODE_HEADER_HEIGHT +
+              CODE_PAD_Y * 2 +
+              lines.length * CODE_LINE_HEIGHT,
+        });
         break;
       }
 
