@@ -121,6 +121,30 @@ const twoAccountsProject = {
   },
 };
 
+/**
+ * Grid objects: a table is one element, and ADR 0027's per-cell properties
+ * survive the server round trip.
+ *
+ * Its own project rather than a second `testMatch` on `behaviour`, because it
+ * is slow — it saves, leaves the board and reopens it — and because it creates
+ * a board, which the dashboard baseline assumes the shared account has none of.
+ * Listed after the visual projects for that reason, and it cleans up.
+ */
+const gridObjectsProject = {
+  name: "grid-objects",
+  testMatch: /gridObjects\.spec\.ts/,
+  // A save interval, a navigation and two full editor loads. The suite-wide
+  // 30s is a screenshot budget and would report the feature broken because a
+  // canvas was slow.
+  timeout: 180_000,
+  use: {
+    ...devices["Desktop Chrome"],
+    viewport: VIEWPORTS.desktop,
+    storageState: "e2e/.auth/user.json",
+  },
+  dependencies: ["setup"],
+};
+
 /*
  * `escrowProject` and `e2e/escrow.spec.ts` stood here and are deleted.
  *
@@ -182,6 +206,7 @@ export default defineConfig({
     // Last: these create boards, and every dashboard screenshot above assumes
     // the shared account has none.
     behaviourProject,
+    gridObjectsProject,
     openBoardsProject,
     twoAccountsProject,
     inviteCodesProject,
