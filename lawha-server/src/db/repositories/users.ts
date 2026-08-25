@@ -399,6 +399,10 @@ export class UsersRepository {
    * Deletes the account and everything cascading from it, returning the ids of
    * the boards that went with it so the caller can remove their file blobs.
    *
+   * Two things do not cascade and are done by hand per board: the `files` rows
+   * (no foreign key to `boards`) and the purged-board tombstones. Both are
+   * explained at their statements below.
+   *
    * The three UPDATEs are not optional. `files.created_by`,
    * `board_scenes.updated_by` and `board_members.added_by` reference users
    * without an ON DELETE clause, which SQLite treats as NO ACTION — with
@@ -424,6 +428,32 @@ export class UsersRepository {
       this.db
         .prepare("UPDATE board_members SET added_by = NULL WHERE added_by = ?")
         .run(id);
+
+      for (const boardId of deletedBoardIds) {
+        // `files.container_id` is plain TEXT with no REFERENCES clause
+        // (001_init.sql), so the cascade from `users` → `boards` →
+        // `board_scenes` does not reach it. The UPDATE above proves this table
+        // was in view when the method was written; only its *attribution*
+        // column was, and the rows themselves have been outliving their boards
+        // ever since. `BoardsRepository.purge` deletes them, and two hard-delete
+        // paths disagreeing about one table is how a leak becomes permanent.
+        this.db
+          .prepare(
+            "DELETE FROM files WHERE scope = 'rooms' AND container_id = ?",
+          )
+          .run(boardId);
+
+        // The same reasoning as a purge (ADR 0029, migration 020): once the
+        // board row is gone the id reads as unclaimed, and the scene write
+        // route hands an unclaimed id to whoever writes to it *as its owner*.
+        // A deleted account's boards are exactly the ids most likely to still
+        // be sitting in somebody else's open tab.
+        this.db
+          .prepare(
+            "INSERT OR REPLACE INTO purged_boards (id, purged_at) VALUES (?, ?)",
+          )
+          .run(boardId, Date.now());
+      }
 
       this.db.prepare("DELETE FROM users WHERE id = ?").run(id);
 

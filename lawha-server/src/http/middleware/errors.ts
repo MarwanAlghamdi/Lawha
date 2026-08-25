@@ -34,6 +34,17 @@ export const notFound = (
   code = "NOT_FOUND",
 ): HttpError => new HttpError(404, message, code);
 
+/**
+ * The thing you are asking about existed and has been destroyed (ADR 0029).
+ *
+ * Distinct from 404, and the distinction is what makes it worth having. A 404
+ * means "no such board here", which for the routes that accept an unclaimed id
+ * is an invitation to create one — and after a permanent delete that is the
+ * one thing that must not happen. 410 says the id is spent.
+ */
+export const gone = (message = "This is gone.", code = "GONE"): HttpError =>
+  new HttpError(410, message, code);
+
 export const conflict = (message: string, code?: string): HttpError =>
   new HttpError(409, message, code);
 
