@@ -6,6 +6,8 @@ import { useApp } from "../App";
 import { Dialog } from "../Dialog";
 import { withInternalFallback } from "../hoc/withInternalFallback";
 
+import { loadMermaidToExcalidraw } from "./mermaidLib";
+
 import MermaidToExcalidraw from "./MermaidToExcalidraw";
 import TextToDiagram from "./TextToDiagram";
 import TTDDialogTabs from "./TTDDialogTabs";
@@ -70,7 +72,8 @@ const TTDDialogBase = withInternalFallback(
     const [mermaidToExcalidrawLib, setMermaidToExcalidrawLib] =
       useState<MermaidToExcalidrawLibProps>({
         loaded: false,
-        api: import("@excalidraw/mermaid-to-excalidraw"),
+        // LAWHA: indirected so the host app can supply its own converter.
+        api: loadMermaidToExcalidraw(),
       });
 
     useEffect(() => {

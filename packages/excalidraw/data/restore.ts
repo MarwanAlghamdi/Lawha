@@ -501,6 +501,19 @@ const restoreElementWithProperties = <
   return ret;
 };
 
+// LAWHA: ADR 0027. A cell property is a tri-state — absent means "written
+// before 0027", null means "set back to inheriting on purpose", and both
+// resolve to the element's own default. Restoring an unrecognised string to
+// null rather than guessing keeps a hand-edited file from inventing a fourth
+// alignment.
+const restoreCellAlign = (value: unknown): "left" | "center" | "right" | null =>
+  value === "left" || value === "center" || value === "right" ? value : null;
+
+const restoreCellVerticalAlign = (
+  value: unknown,
+): "top" | "middle" | "bottom" | null =>
+  value === "top" || value === "middle" || value === "bottom" ? value : null;
+
 export const restoreElement = (
   /** element to be restored */
   element: Exclude<ExcalidrawElement, ExcalidrawSelectionElement>,
@@ -738,12 +751,23 @@ export const restoreElement = (
 
       return restoreElementWithProperties(element, {
         variant: element.variant === "matrix" ? "matrix" : "table",
+        // This rebuilds each cell field by field rather than spreading it, so
+        // a key not named here is DROPPED — on every ingest path, including
+        // remote elements during collaboration. ADR 0027's per-cell properties
+        // are named below for exactly that reason: without it they would
+        // survive a reload of your own tab and vanish when a second person's
+        // client round-tripped the scene.
         cells: cells.map((row) =>
           Array.from({ length: cols }, (_, col) => ({
             text: typeof row?.[col]?.text === "string" ? row[col]!.text : "",
             fill: typeof row?.[col]?.fill === "string" ? row[col]!.fill : null,
             color:
               typeof row?.[col]?.color === "string" ? row[col]!.color : null,
+            align: restoreCellAlign(row?.[col]?.align),
+            verticalAlign: restoreCellVerticalAlign(row?.[col]?.verticalAlign),
+            bold: typeof row?.[col]?.bold === "boolean" ? row[col]!.bold : null,
+            italic:
+              typeof row?.[col]?.italic === "boolean" ? row[col]!.italic : null,
           })),
         ),
         colWidths: normalise(element.colWidths, cols),
@@ -755,6 +779,9 @@ export const restoreElement = (
             : element.variant === "matrix"
             ? "right"
             : "left",
+        // Absent in anything written before ADR 0027, and "top" is what those
+        // builds drew, so the default reproduces them exactly.
+        verticalAlign: restoreCellVerticalAlign(element.verticalAlign) ?? "top",
         // Written by a build older than the one that put text size on the
         // element. The constant is what that build drew with, so defaulting to
         // it keeps the picture identical rather than resizing somebody's table

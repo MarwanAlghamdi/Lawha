@@ -6,6 +6,7 @@ import "../excalidraw-app/sentry";
 
 // Side-effect import: registers the Lawha @font-face declarations.
 import "./lawha/fonts";
+import "./lawha/mermaid/register";
 
 import { LawhaRouter } from "./routes/router";
 

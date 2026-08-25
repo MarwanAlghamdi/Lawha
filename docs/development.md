@@ -146,3 +146,7 @@ LAWHA_E2E_OWNER_PASSWORD=<password> \
 ```
 
 Both create boards and are kept out of the default run.
+
+## End-to-end tests
+
+The suite registers accounts and creates boards on whatever `LAWHA_E2E_BASE_URL` names. Run it against a scratch server, never your deployment — [docs/e2e-sandbox.md](e2e-sandbox.md) has the two commands and the checks that prove the isolation held.

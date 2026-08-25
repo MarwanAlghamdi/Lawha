@@ -2637,6 +2637,23 @@ export const TableDeleteColumnIcon = createIcon(
   tablerIconProps,
 );
 
+// LAWHA: ADR 0027. Weight and style for a table cell. Upstream has no bold or
+// italic icon because upstream text has no bold or italic.
+export const TextBoldIcon = createIcon(
+  <g strokeWidth="1.75">
+    <path d="M7.5 5h5.25a3.25 3.25 0 0 1 0 6.5H7.5z" />
+    <path d="M7.5 11.5h6a3.75 3.75 0 0 1 0 7.5h-6z" />
+  </g>,
+  tablerIconProps,
+);
+
+export const TextItalicIcon = createIcon(
+  <g strokeWidth="1.75">
+    <path d="M11 5h6M7 19h6M14.5 5l-5 14" />
+  </g>,
+  tablerIconProps,
+);
+
 export const MatrixBracketsOnIcon = createIcon(
   <g strokeWidth="1.5">
     <path d="M8 4H5v16h3M16 4h3v16h-3" />

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { newTableElement } from "../src/newElement";
 import {
+  CELL_PADDING,
+  cellFont,
   columnOffsets,
   deleteColumn,
   deleteRow,
@@ -13,8 +15,10 @@ import {
   insertRow,
   moveColumn,
   moveRow,
+  heatRange,
   resizeColumn,
   resizeRow,
+  resolveCellText,
   withCell,
 } from "../src/tableElement";
 
@@ -321,5 +325,180 @@ describe("cell ink", () => {
       const approx = ink === "#ffffff" ? "#1864ab" : "#eef4fd";
       expect(ratio(ink, approx)).toBeGreaterThan(4.5);
     }
+  });
+});
+
+// ADR 0027. The resolver is the single place both renderers get alignment,
+// weight and placement from, so this is where that contract is pinned.
+describe("resolveCellText", () => {
+  const xs = [0, 100, 200, 300];
+  const ys = [0, 40, 80, 120];
+
+  const withText = (
+    overrides: Record<string, unknown> = {},
+    patch: Record<string, unknown> = {},
+  ) => {
+    const t = table(3, 3, overrides);
+    return { ...t, cells: withCell(t, 1, 0, { text: "x", ...patch }) };
+  };
+
+  it("returns nothing for an empty cell", () => {
+    expect(resolveCellText(table(3, 3), 1, 0, xs, ys)).toBeNull();
+  });
+
+  it("returns nothing for a column too narrow to read", () => {
+    const t = withText();
+    expect(resolveCellText(t, 1, 0, [0, 8, 200, 300], ys)).toBeNull();
+  });
+
+  it("inherits the element's horizontal alignment", () => {
+    const left = resolveCellText(withText({ textAlign: "left" }), 1, 0, xs, ys);
+    expect(left!.align).toBe("left");
+    expect(left!.anchorX).toBe(CELL_PADDING);
+
+    const right = resolveCellText(
+      withText({ textAlign: "right" }),
+      1,
+      0,
+      xs,
+      ys,
+    );
+    expect(right!.align).toBe("right");
+    expect(right!.anchorX).toBe(100 - CELL_PADDING);
+
+    const centre = resolveCellText(
+      withText({ textAlign: "center" }),
+      1,
+      0,
+      xs,
+      ys,
+    );
+    expect(centre!.align).toBe("center");
+    expect(centre!.anchorX).toBe(50);
+  });
+
+  it("lets one cell override the element's alignment", () => {
+    const t = withText({ textAlign: "left" }, { align: "right" });
+    const resolved = resolveCellText(t, 1, 0, xs, ys)!;
+    expect(resolved.align).toBe("right");
+    expect(resolved.anchorX).toBe(100 - CELL_PADDING);
+  });
+
+  it("treats an explicit null as inheriting, not as a value", () => {
+    const t = withText({ textAlign: "center" }, { align: null });
+    expect(resolveCellText(t, 1, 0, xs, ys)!.align).toBe("center");
+  });
+
+  it("defaults vertical alignment to the top, which is what 0026 drew", () => {
+    const resolved = resolveCellText(withText(), 1, 0, xs, ys)!;
+    expect(resolved.verticalAlign).toBe("top");
+    expect(resolved.lines[0]!.y).toBe(ys[1]! + CELL_PADDING);
+  });
+
+  it("moves text down for middle and bottom", () => {
+    const top = resolveCellText(withText(), 1, 0, xs, ys)!;
+    const middle = resolveCellText(
+      withText({}, { verticalAlign: "middle" }),
+      1,
+      0,
+      xs,
+      ys,
+    )!;
+    const bottom = resolveCellText(
+      withText({}, { verticalAlign: "bottom" }),
+      1,
+      0,
+      xs,
+      ys,
+    )!;
+
+    expect(middle.lines[0]!.y).toBeGreaterThan(top.lines[0]!.y);
+    expect(bottom.lines[0]!.y).toBeGreaterThan(middle.lines[0]!.y);
+    // Never past its own row, whichever way it is aligned.
+    expect(bottom.lines[0]!.y).toBeLessThanOrEqual(ys[2]!);
+  });
+
+  it("never starts above the cell's own padding, however tall the text", () => {
+    // A one-pixel row cannot fit a line, and bottom alignment would otherwise
+    // compute a negative offset and lose the first line off the top edge.
+    const t = withText({}, { verticalAlign: "bottom" });
+    const resolved = resolveCellText(t, 1, 0, xs, [0, 40, 41, 120]);
+    if (resolved && resolved.lines.length) {
+      expect(resolved.lines[0]!.y).toBeGreaterThanOrEqual(40 + CELL_PADDING);
+    }
+  });
+
+  it("bolds the header row, and lets a cell turn that back off", () => {
+    const t = table(3, 3, { headerRow: true });
+    const header = { ...t, cells: withCell(t, 0, 0, { text: "Model" }) };
+    expect(resolveCellText(header, 0, 0, xs, ys)!.bold).toBe(true);
+
+    const plain = {
+      ...t,
+      cells: withCell(t, 0, 0, { text: "Model", bold: false }),
+    };
+    // `??` not `||` — false has to be a real answer here.
+    expect(resolveCellText(plain, 0, 0, xs, ys)!.bold).toBe(false);
+  });
+
+  it("carries italic independently of weight", () => {
+    const t = withText({}, { italic: true, bold: true });
+    const resolved = resolveCellText(t, 1, 0, xs, ys)!;
+    expect(resolved.italic).toBe(true);
+    expect(resolved.bold).toBe(true);
+  });
+});
+
+describe("cellFont", () => {
+  it("orders style before weight, as the CSS shorthand requires", () => {
+    const t = table(1, 1);
+    expect(cellFont(t, false, false)).not.toMatch(/bold|italic/);
+    expect(cellFont(t, true, false)).toMatch(/^bold \d/);
+    expect(cellFont(t, false, true)).toMatch(/^italic \d/);
+    // "italic bold 16px ..." parses; "bold italic 16px ..." does not.
+    expect(cellFont(t, true, true)).toMatch(/^italic bold \d/);
+  });
+});
+
+describe("heatRange", () => {
+  const numeric = (element: ExcalidrawTableElement, values: string[][]) => ({
+    ...element,
+    cells: element.cells.map((row, r) =>
+      row.map((cell, c) => ({ ...cell, text: values[r]?.[c] ?? "" })),
+    ),
+  });
+
+  it("is null when the heatmap is off", () => {
+    const t = numeric(table(2, 2, { heatmap: false }), [
+      ["1", "2"],
+      ["3", "4"],
+    ]);
+    expect(heatRange(t)).toBeNull();
+  });
+
+  it("excludes the header row, which is labels however it parses", () => {
+    // A column headed `2020` used to be heat-coloured AND counted in the range
+    // that scales every other cell, which shifted the whole ramp.
+    const t = numeric(table(2, 2, { heatmap: true, headerRow: true }), [
+      ["2020", "2021"],
+      ["1", "3"],
+    ]);
+    expect(heatRange(t)).toEqual({ min: 1, max: 3 });
+  });
+
+  it("counts row 0 when there is no header row", () => {
+    const t = numeric(table(2, 2, { heatmap: true, headerRow: false }), [
+      ["10", "20"],
+      ["1", "3"],
+    ]);
+    expect(heatRange(t)).toEqual({ min: 1, max: 20 });
+  });
+
+  it("is null when no cell parses as a number", () => {
+    const t = numeric(table(2, 2, { heatmap: true, headerRow: false }), [
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    expect(heatRange(t)).toBeNull();
   });
 });

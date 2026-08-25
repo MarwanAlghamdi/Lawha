@@ -205,6 +205,7 @@ export const newTableElement = (
     cells?: ExcalidrawTableElement["cells"];
     headerRow?: boolean;
     textAlign?: ExcalidrawTableElement["textAlign"];
+    verticalAlign?: ExcalidrawTableElement["verticalAlign"];
     fontSize?: number;
     heatmap?: boolean;
     brackets?: boolean;
@@ -236,6 +237,9 @@ export const newTableElement = (
       // not. Both remain overridable.
       textAlign:
         opts.textAlign ?? (opts.variant === "matrix" ? "right" : "left"),
+      // Top is what every build before ADR 0027 drew, so a new table looks
+      // like an old one until somebody asks for something else.
+      verticalAlign: opts.verticalAlign ?? "top",
       fontSize: opts.fontSize ?? DEFAULT_CELL_FONT_SIZE,
       // Matrix-only affordances, off for a plain table: a table of prose with
       // brackets round it is a matrix that is not one.

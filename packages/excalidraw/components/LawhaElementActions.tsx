@@ -25,6 +25,7 @@ import type {
   ExcalidrawCodeElement,
   ExcalidrawTableElement,
   ExcalidrawTensorElement,
+  TableCell,
 } from "@excalidraw/element/types";
 
 import { t } from "../i18n";
@@ -41,9 +42,14 @@ import {
   TableDeleteRowIcon,
   TableHeaderOffIcon,
   TableHeaderOnIcon,
+  TextAlignBottomIcon,
   TextAlignCenterIcon,
   TextAlignLeftIcon,
+  TextAlignMiddleIcon,
   TextAlignRightIcon,
+  TextAlignTopIcon,
+  TextBoldIcon,
+  TextItalicIcon,
 } from "./icons";
 import { RadioSelection } from "./RadioSelection";
 
@@ -220,6 +226,68 @@ const TableActions = ({
       return acc === undefined || acc === v ? v : null;
     }, undefined) ?? null;
 
+  // ADR 0027. Text properties resolve per cell and fall back to the element,
+  // so the panel has to show the RESOLVED value — a header cell reads as bold
+  // whether or not anything was ever written to it.
+  const resolvedAlign = (row: number, col: number) =>
+    element.cells[row]?.[col]?.align ?? element.textAlign;
+  const resolvedVerticalAlign = (row: number, col: number) =>
+    element.cells[row]?.[col]?.verticalAlign ?? element.verticalAlign ?? "top";
+  const resolvedBold = (row: number, col: number) =>
+    element.cells[row]?.[col]?.bold ?? (element.headerRow && row === 0);
+  const resolvedItalic = (row: number, col: number) =>
+    element.cells[row]?.[col]?.italic ?? false;
+
+  /** The selection's common resolved value, or null when it is mixed. */
+  const commonBy = <T,>(read: (row: number, col: number) => T): T | null =>
+    target.reduce<T | null | undefined>((acc, { row, col }) => {
+      const v = read(row, col);
+      return acc === undefined || acc === v ? v : null;
+    }, undefined) ?? null;
+
+  const paintText = (patch: Partial<TableCell>) =>
+    mutate(element, {
+      cells: element.cells.map((row, r) =>
+        row.map((cell, c) =>
+          target.some((sel) => sel.row === r && sel.col === c)
+            ? { ...cell, ...patch }
+            : cell,
+        ),
+      ),
+    });
+
+  /**
+   * Horizontal alignment.
+   *
+   * With a bulk selection this writes to those cells. With nothing selected it
+   * moves the ELEMENT's default and clears the per-cell overrides that would
+   * otherwise mask it — so "click the table, press centre" still centres the
+   * whole grid, which is the behaviour 0026 wanted. Making it per-cell takes
+   * selecting a cell first, which is the deliberate act 0026 was worried was
+   * missing.
+   */
+  const setHorizontal = (textAlign: ExcalidrawTableElement["textAlign"]) =>
+    cells.length > 0
+      ? paintText({ align: textAlign })
+      : mutate(element, {
+          textAlign,
+          cells: element.cells.map((row) =>
+            row.map((cell) => ({ ...cell, align: null })),
+          ),
+        });
+
+  const setVertical = (
+    verticalAlign: ExcalidrawTableElement["verticalAlign"],
+  ) =>
+    cells.length > 0
+      ? paintText({ verticalAlign })
+      : mutate(element, {
+          verticalAlign,
+          cells: element.cells.map((row) =>
+            row.map((cell) => ({ ...cell, verticalAlign: null })),
+          ),
+        });
+
   // Remove acts on the bulk selection when there is one, otherwise the last.
   const at = (axis: "row" | "col") =>
     selection?.axis === axis
@@ -269,7 +337,11 @@ const TableActions = ({
       </fieldset>
 
       <fieldset>
-        <legend>{t("labels.tableAlign")}</legend>
+        <legend>
+          {cells.length > 0
+            ? t("labels.tableAlignSelected")
+            : t("labels.tableAlign")}
+        </legend>
         <div className="buttonList">
           <RadioSelection<ExcalidrawTableElement["textAlign"]>
             group="lawha-text-align"
@@ -293,8 +365,79 @@ const TableActions = ({
                 testId: "lawha-align-right",
               },
             ]}
-            value={element.textAlign}
-            onChange={(textAlign) => mutate(element, { textAlign })}
+            value={
+              cells.length > 0 ? commonBy(resolvedAlign) : element.textAlign
+            }
+            onChange={setHorizontal}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>{t("labels.tableVerticalAlign")}</legend>
+        <div className="buttonList">
+          <RadioSelection<ExcalidrawTableElement["verticalAlign"]>
+            group="lawha-vertical-align"
+            options={[
+              {
+                value: "top",
+                text: t("labels.alignTop"),
+                icon: <TextAlignTopIcon theme={app.state.theme} />,
+                testId: "lawha-valign-top",
+              },
+              {
+                value: "middle",
+                text: t("labels.centerVertically"),
+                icon: <TextAlignMiddleIcon theme={app.state.theme} />,
+                testId: "lawha-valign-middle",
+              },
+              {
+                value: "bottom",
+                text: t("labels.alignBottom"),
+                icon: <TextAlignBottomIcon theme={app.state.theme} />,
+                testId: "lawha-valign-bottom",
+              },
+            ]}
+            value={
+              cells.length > 0
+                ? commonBy(resolvedVerticalAlign)
+                : element.verticalAlign ?? "top"
+            }
+            onChange={setVertical}
+          />
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>{t("labels.tableTextStyle")}</legend>
+        <div className="buttonList">
+          <RadioSelection<"bold" | "italic">
+            type="button"
+            options={[
+              {
+                value: "bold",
+                text: t("labels.bold"),
+                icon: TextBoldIcon,
+                testId: "lawha-cell-bold",
+                active: commonBy(resolvedBold) === true,
+              },
+              {
+                value: "italic",
+                text: t("labels.italic"),
+                icon: TextItalicIcon,
+                testId: "lawha-cell-italic",
+                active: commonBy(resolvedItalic) === true,
+              },
+            ]}
+            value={null}
+            onClick={(which) =>
+              // Always an explicit boolean, never back to null: a toggle whose
+              // off state means "inherit" reads as broken on a header row,
+              // where inheriting is on.
+              which === "bold"
+                ? paintText({ bold: commonBy(resolvedBold) !== true })
+                : paintText({ italic: commonBy(resolvedItalic) !== true })
+            }
           />
         </div>
       </fieldset>

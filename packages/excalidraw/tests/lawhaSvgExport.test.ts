@@ -112,6 +112,88 @@ describe("lawha SVG export", () => {
     // the card's own dark panel, not a transparent rect
     expect(html).toContain(CODE_BACKGROUND);
   });
+
+  /**
+   * ADR 0027. The canvas and SVG renderers now share `resolveCellText`, and
+   * the reason they must is the defect this file was written for: alignment
+   * lived in two places and only one of them was ever looked at. A per-cell
+   * property that works on screen and not in an export is the same bug.
+   */
+  it("carries per-cell alignment, weight and style into the SVG", async () => {
+    const html = await exportOne(
+      newTableElement({
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 120,
+        // The element default is left; the cells override it individually,
+        // which is the whole point of 0027.
+        textAlign: "left",
+        headerRow: false,
+        cells: [
+          [
+            { text: "LeftCell", fill: null, color: null },
+            {
+              text: "RightCell",
+              fill: null,
+              color: null,
+              align: "right" as const,
+            },
+          ],
+          [
+            {
+              text: "BoldCell",
+              fill: null,
+              color: null,
+              bold: true,
+            },
+            {
+              text: "ItalicCell",
+              fill: null,
+              color: null,
+              italic: true,
+            },
+          ],
+        ],
+        rows: 2,
+        cols: 2,
+      }),
+    );
+
+    expect(html).not.toContain(PLACEHOLDER);
+    // Every cell's text is present...
+    for (const text of ["LeftCell", "RightCell", "BoldCell", "ItalicCell"]) {
+      expect(html).toContain(text);
+    }
+    // ...and the overrides actually reached the output.
+    expect(html).toContain('text-anchor="end"');
+    expect(html).toContain('font-weight="bold"');
+    expect(html).toContain('font-style="italic"');
+  });
+
+  it("does not bold or italicise a plain table", async () => {
+    const html = await exportOne(
+      newTableElement({
+        x: 0,
+        y: 0,
+        width: 200,
+        height: 80,
+        headerRow: false,
+        cells: [
+          [
+            { text: "plain", fill: null, color: null },
+            { text: "cells", fill: null, color: null },
+          ],
+        ],
+        rows: 1,
+        cols: 2,
+      }),
+    );
+
+    expect(html).toContain("plain");
+    expect(html).not.toContain('font-weight="bold"');
+    expect(html).not.toContain('font-style="italic"');
+  });
 });
 
 const CODE_BACKGROUND = "#1e2128";
