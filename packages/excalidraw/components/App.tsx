@@ -463,6 +463,8 @@ import { AppPan, PAN_INTENT_THRESHOLD_PX } from "./App.pan";
 import { AppViewport, RIGHT_SIDEBAR_WIDTH } from "./App.viewport";
 import BraveMeasureTextError from "./BraveMeasureTextError";
 import { ContextMenu, CONTEXT_MENU_SEPARATOR } from "./ContextMenu";
+// LAWHA: which Mermaid converter runs is a host-app decision (ADR 0028).
+import { loadMermaidToExcalidraw } from "./TTDDialog/mermaidLib";
 import { activeEyeDropperAtom } from "./EyeDropper";
 import FollowMode from "./FollowMode/FollowMode";
 import LayerUI from "./LayerUI";
@@ -4678,7 +4680,8 @@ class App extends React.Component<AppProps, AppState> {
 
     // ------------------- Successful Mermaid -------------------
     if (!isPlainPaste && isMaybeMermaidDefinition(data.text)) {
-      const api = await import("@excalidraw/mermaid-to-excalidraw");
+      // LAWHA: indirected — see components/TTDDialog/mermaidLib.ts.
+      const api = await loadMermaidToExcalidraw();
       try {
         const { elements: skeletonElements, files = {} } =
           await api.parseMermaidToExcalidraw(data.text);
