@@ -114,6 +114,23 @@ const rowsFor = (config: LawhaAdminConfig): Row[] => [
         : "Refreshed rolling in its last day, so an active session does not end mid-drawing. Set LAWHA_SESSION_TTL_DAYS=0 for sessions that never expire.",
   },
   {
+    label: "Trash",
+    // Same 0-handling as the session TTL above, and for a sharper reason: this
+    // is the setting that decides whether a deleted board is ever irreversibly
+    // destroyed, so "0 days" printed here would read as "destroyed
+    // immediately" when it means the exact opposite.
+    value:
+      config.trashRetentionDays === 0
+        ? "Kept for ever"
+        : `${config.trashRetentionDays} day${
+            config.trashRetentionDays === 1 ? "" : "s"
+          }`,
+    hint:
+      config.trashRetentionDays === 0
+        ? "Deleted boards stay in the trash until somebody empties it. Nothing is removed on a timer. Set LAWHA_TRASH_RETENTION_DAYS to a number of days to sweep them."
+        : "A deleted board is restorable from the owner's trash until this many days have passed, then it is destroyed — row, scene and uploaded images. Set LAWHA_TRASH_RETENTION_DAYS=0 to keep them indefinitely.",
+  },
+  {
     label: "Database",
     value: config.dbPath,
     path: true,

@@ -33,6 +33,22 @@ interface LawhaFolderSidebarProps {
   onDelete: (folderId: string) => void;
   /** Boards being dragged, so every row can be a drop target. */
   drag: BoardDrag;
+  /**
+   * Whether the grid has been replaced by the trash (ADR 0029).
+   *
+   * Passed in rather than derived from `active`, because the trash is not a
+   * folder filter — it is a different list, from a different endpoint, of rows
+   * that are not `BoardListEntry` at all. Widening `FolderFilter` with a third
+   * variant would have put a trashed board inside `matchBoards`, one missed
+   * `case` away from appearing on the dashboard.
+   *
+   * It still has to reach this column, because while the trash is showing NO
+   * folder row may look selected. Leaving "All boards" lit under a screen full
+   * of deleted boards is the exact shape invariant 7 warns about — the sidebar
+   * still describing a grid that is no longer there.
+   */
+  isTrashActive: boolean;
+  onSelectTrash: () => void;
 }
 
 /** Idle, naming a new folder, renaming one in place, or confirming a delete. */
@@ -87,6 +103,8 @@ export const LawhaFolderSidebar = ({
   onRecolour,
   onDelete,
   drag,
+  isTrashActive,
+  onSelectTrash,
 }: LawhaFolderSidebarProps) => {
   const [mode, setMode] = useState<SidebarMode>(IDLE);
   const [draft, setDraft] = useState("");
@@ -153,7 +171,7 @@ export const LawhaFolderSidebar = ({
    * move having failed.
    */
   const allRow = () => {
-    const on = isSameFolder(active, ALL_FOLDERS);
+    const on = !isTrashActive && isSameFolder(active, ALL_FOLDERS);
     return (
       <button
         type="button"
@@ -203,7 +221,8 @@ export const LawhaFolderSidebar = ({
             return editor(folder.id, `Rename ${folder.name}`);
           }
 
-          const on = isSameFolder(active, inFolder(folder.id));
+          const on =
+            !isTrashActive && isSameFolder(active, inFolder(folder.id));
           const open = expanded.has(folder.id);
 
           return (
@@ -297,6 +316,47 @@ export const LawhaFolderSidebar = ({
             {activeFolder ? ` in ${activeFolder.name}` : ""}
           </button>
         )}
+      </div>
+
+      {/*
+        Trash, and deliberately OUTSIDE the radiogroup above.
+        `role="radiogroup"` is labelled "Filter by folder", and a screen reader
+        walking it would announce the trash as a fourth folder — which it is
+        not: picking it replaces the grid rather than narrowing it. A separate
+        button with `aria-pressed` says the true thing, that this is a mode
+        rather than a filter.
+
+        Takes no drop. Dragging a board onto it would be a second, silent way
+        to delete one, with no confirm step and no undo prompt — the same
+        gesture as filing, with a consequence nothing else in this column has.
+      */}
+      <div className="lw-home__trash-card">
+        <button
+          type="button"
+          aria-pressed={isTrashActive}
+          className={`lw-folder-row lw-home__trash-row${
+            isTrashActive ? " lw-folder-row--on" : ""
+          }`}
+          onClick={onSelectTrash}
+        >
+          <span className="lw-folder-row__caret" aria-hidden="true" />
+          <span className="lw-home__trash-icon" aria-hidden="true">
+            {/* 16px, matching the dot it replaces. Inline rather than from
+              `icons.tsx`, which lives in `packages/` — this column is Lawha's
+              and must not add a reason to edit upstream (invariant 10). */}
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path
+                d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <span className="lw-folder-row__name">Trash</span>
+        </button>
       </div>
 
       {/*

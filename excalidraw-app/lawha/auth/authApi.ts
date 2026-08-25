@@ -358,6 +358,8 @@ export interface LawhaAdminConfig {
   secureCookiesEffective: boolean;
   masterPasswordConfigured: boolean;
   sessionTtlDays: number;
+  /** Days a deleted board stays restorable. 0 = kept for ever (ADR 0029). */
+  trashRetentionDays: number;
   dbPath: string;
   filesDir: string;
   /** Real accounts; the shared `anonymous` stand-in is machinery, not a person. */

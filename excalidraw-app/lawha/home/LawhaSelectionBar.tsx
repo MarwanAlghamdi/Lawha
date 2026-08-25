@@ -206,8 +206,11 @@ export const LawhaSelectionBar = ({
           role="alertdialog"
         >
           <span className="lw-selection-bar__label">
-            Delete {plural(count, "board")}? Everything on them goes too, and it
-            cannot be undone.
+            {/* Matches the single-board wording, and for the reason given
+                there: the trash makes "cannot be undone" false here and true
+                only on the trash's own delete (ADR 0029). */}
+            Move {plural(count, "board")} to the trash? You can restore them
+            from there.
           </span>
           <button
             type="button"
