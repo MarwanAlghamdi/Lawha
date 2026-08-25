@@ -36,6 +36,7 @@ import { normalizeFixedPoint } from "@excalidraw/element";
 import {
   CODE_FONT_SIZE,
   DEFAULT_CELL_FONT_SIZE,
+  MAX_RANK,
   TENSOR_LABEL_FONT_SIZE,
 } from "@excalidraw/element";
 import {
@@ -800,10 +801,18 @@ export const restoreElement = (
     }
     case "tensor":
       return restoreElementWithProperties(element, {
+        // Same predicate as `parseDims`, applied at the other boundary. Rank
+        // is bounded here too (ADR 0030): a scene file naming four hundred
+        // axes is not a tensor anyone drew, and the multiplier label would be
+        // four hundred numbers wide. `Number.isFinite` rather than `> 0`
+        // alone, because `Infinity > 0` is true and would reach the geometry.
         dims:
           Array.isArray(element.dims) &&
           element.dims.length > 0 &&
-          element.dims.every((n) => typeof n === "number" && n > 0)
+          element.dims.length <= MAX_RANK &&
+          element.dims.every(
+            (n) => typeof n === "number" && Number.isFinite(n) && n > 0,
+          )
             ? element.dims
             : [64, 32, 32],
         name: typeof element.name === "string" ? element.name : null,

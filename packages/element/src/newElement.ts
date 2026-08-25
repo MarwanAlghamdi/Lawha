@@ -28,7 +28,7 @@ import { wrapText } from "./textWrapping";
 
 import { isLineElement } from "./typeChecks";
 import { DEFAULT_CELL_FONT_SIZE } from "./tableElement";
-import { TENSOR_LABEL_FONT_SIZE } from "./tensorElement";
+import { sanitizeDims, TENSOR_LABEL_FONT_SIZE } from "./tensorElement";
 import { CODE_FONT_SIZE } from "./codeElement";
 
 import type {
@@ -263,7 +263,13 @@ export const newTensorElement = (
     {
       ..._newElementBase<ExcalidrawTensorElement>("tensor", opts),
       type: "tensor",
-      dims: opts.dims?.length ? opts.dims : [64, 32, 32],
+      // Filtered, not merely counted. The skeleton API hands this straight
+      // through, so `convertToExcalidrawElements([{ type: "tensor", dims:
+      // [0, -5] }])` used to store two values that `restore.ts` rejects on the
+      // very next ingest — an element that survives creation and reverts to
+      // the default the first time it round-trips. Bounded at MAX_RANK for the
+      // reason given there (ADR 0030).
+      dims: sanitizeDims(opts.dims) ?? [64, 32, 32],
       name: opts.name ?? null,
       fontSize: opts.fontSize ?? TENSOR_LABEL_FONT_SIZE,
     },

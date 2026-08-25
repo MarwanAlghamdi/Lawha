@@ -286,11 +286,29 @@ export type TableCell = {
 export type ExcalidrawTensorElement = _ExcalidrawElementBase &
   Readonly<{
     type: "tensor";
-    /** `[rows, cols]` draws a flat block; `[depth, height, width]` an isometric one. */
+    /**
+     * The shape, at any rank (ADR 0030).
+     *
+     * `[n]` draws a rectangle with one label, `[rows, cols]` a flat block,
+     * `[depth, height, width]` an isometric one, and anything longer draws its
+     * trailing three axes as that box repeated in a stack, with the leading
+     * axes written above it as a multiplier. `tensorLayout` in
+     * `tensorElement.ts` is the one place that performs the split; do not
+     * destructure this array at a call site.
+     */
     dims: readonly number[];
     /** Optional name drawn on the front face. */
     name: string | null;
-    /** Dimension-label size; scaled by a bounding-box resize. */
+    /**
+     * Dimension-label size.
+     *
+     * Not touched by a resize — `resizeElements.ts` has no tensor branch, so
+     * dragging a handle changes `width`/`height` and leaves this alone. (The
+     * comment here used to claim the opposite. Every gutter in
+     * `tensorElement.ts` now scales off this value, so a tensor whose
+     * `fontSize` was set through the properties panel, `restore.ts` or the
+     * skeleton API lays out correctly whether or not that ever changes.)
+     */
     fontSize: number;
   }>;
 
