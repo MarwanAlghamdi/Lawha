@@ -43,6 +43,8 @@ docker compose logs lawha-server
 
 - Everything Excalidraw does — infinite canvas, images, libraries, exports
 - **Tables, matrices, tensor blocks and code blocks** — one element each, not groups
+- **Per-cell formatting** — alignment on both axes, weight, style and colour, per cell
+- **Mermaid, converted natively** — class and ER diagrams become real tables, not a flat image
 - Real-time collaboration with live cursors, names and avatars
 - Accounts, and sessions
 - Dashboard with folders, tags and search
@@ -68,6 +70,16 @@ A board is Excalidraw's canvas and tools with Lawha's chrome around it — the b
 ![A board with a results table, a correlation matrix with a heatmap, a 3-D tensor block, and a Python code block, with an arrow bound from the code to the table](docs/screenshots/grid-objects.png)
 
 Reach for them under **⋮** in the toolbar. Drag a column divider to resize, drag a row handle to reorder, click a handle to select the row or column, and use the **+** at each edge to add one. Double-click a cell to type, or a code block to edit its source.
+
+**Every cell formats itself.** Alignment on both axes, bold, italic, fill and text colour — per cell, not per table. A results table wants its label column left and its numbers right, and the best row in bold; one table cannot be aligned two ways without this. Select a cell, a row or a column and the controls apply to the selection; select nothing and they apply to the whole grid.
+
+![A results table with the label column left-aligned, the numeric columns right-aligned, and the winning row bold on a green fill, beside the properties panel showing cell alignment, vertical alignment, text style, cell fill and text colour](docs/screenshots/cell-formatting.png)
+
+**Mermaid becomes elements you can edit, not a picture of a diagram.** Lawha reads mermaid's own parser and lays the result out itself, so a class diagram and an ER diagram arrive as real tables and a composite state arrives as a frame — every one of them movable, editable and bindable. Upstream Excalidraw flattens the non-flowchart types into a single embedded image.
+
+![Three converted diagrams side by side: a UML class diagram as two tables joined by a hollow-triangle generalisation arrow, an entity-relationship diagram as two tables joined by a crow's-foot relationship, and a state machine with a composite state drawn as a frame](docs/screenshots/mermaid-native.png)
+
+Flowchart, class, ER and state convert natively; sequence and the rest fall through to the upstream converter, so nothing that worked before stopped working. See [ADR 0028](docs/adr/0028-the-mermaid-importer.md).
 
 **Two people on one board.** Every cursor carries the name the server announced, not one the sender claimed, so a modified client cannot draw itself as somebody else. "Saved" means the write landed, not that it was attempted.
 

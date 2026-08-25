@@ -633,6 +633,14 @@ The state is announced three ways because a ring is not one: `aria-pressed` on t
     | `excalidraw/components/App.tsx` | ADR 0013. **The only one of the four that can conflict**, and the ADR enumerates its five hook points for exactly that reason |
     | `excalidraw/tests/appPan.test.ts` | ADR 0013. New file |
     | `excalidraw/tests/rightDragPan.test.tsx` | ADR 0013. New file |
+    | `excalidraw/mermaid.ts` | ADR 0028. **Was 0 lines of diff and is 20.** Five diagram-type keywords Mermaid 11 added, missing from the paste heuristic |
+    | `excalidraw/components/TTDDialog/MermaidToExcalidraw.tsx` | ADR 0028. **Was 0 and is 20.** The `stateLink` the description string had no wiring for |
+
+    | `excalidraw/components/TTDDialog/TTDDialog.tsx` | ADR 0028. Was 0, now 23 — the converter loader indirection |
+    | `excalidraw/components/TTDDialog/mermaidLib.ts` | ADR 0028. **New file**, so free at merge time |
+    | `element/src/transform.ts` | ADR 0028. Was 0, now 205 — `table`/`tensor`/`code` in the element-skeleton API, and an arrow can bind to them |
+
+    **Re-measured 2026-08-25 at `d5f7e910` plus the ADR 0027/0028 batch: `packages/` diverges in 70 tracked paths, 10,419 insertions** (was 63 / 9,444), plus one new untracked file. The `mermaid*` and `TTDDialog/` rows are the ones that matter, because every one of those files was at *exactly zero* before and the directory was pristine upstream. `App.tsx` grew by two lines — an import and one changed expression. The converter itself is ~2,750 lines in `excalidraw-app/lawha/mermaid/`, which upstream does not have and never will, and therefore costs nothing at merge.
 
     None of the three unrecorded ones is a mistake — each is small, deliberate and consistent with an ADR — but an upstream merge is planned against a number, and the number was wrong. Fix the count when someone next opens invariant 10 for a real reason; do not let a stale figure be the argument for adding "just one more".
 
