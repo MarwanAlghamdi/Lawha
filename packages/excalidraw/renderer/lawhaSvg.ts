@@ -3,11 +3,9 @@ import {
   FONT_FAMILY,
   getFontFamilyString,
   getFontString,
-  getLineHeight,
   THEME,
 } from "@excalidraw/common";
 import {
-  CELL_PADDING,
   CODE_FONT_SIZE,
   CODE_HEADER_HEIGHT,
   CODE_LINE_HEIGHT,
@@ -18,10 +16,11 @@ import {
   codeGutterWidth,
   colorForScope,
   cellFill,
+  cellFontFamily,
   getCell,
+  heatRange,
   inkOn,
-  getLineHeightInPx,
-  getWrappedTextLines,
+  resolveCellText,
   gridLines,
   highlight,
   tensorGeometry,
@@ -76,6 +75,8 @@ const svgText = (
     fontSize: number;
     anchor?: string;
     weight?: string;
+    /** `italic`. Separate from `weight` because CSS keeps the axes separate. */
+    fontStyle?: string;
     opacity?: number;
   },
 ) => {
@@ -92,6 +93,9 @@ const svgText = (
   if (opts.weight) {
     node.setAttribute("font-weight", opts.weight);
   }
+  if (opts.fontStyle) {
+    node.setAttribute("font-style", opts.fontStyle);
+  }
   if (opts.opacity !== undefined) {
     node.setAttribute("fill-opacity", `${opts.opacity}`);
   }
@@ -107,26 +111,16 @@ export const renderTableTextToSvg = (
   const { box, xs, ys } = gridLines(element);
   const rows = tableRowCount(element);
   const cols = tableColCount(element);
-  const fontFamily =
-    element.variant === "matrix"
-      ? FONT_FAMILY.Cascadia
-      : FONT_FAMILY.Excalifont;
+  const fontFamily = cellFontFamily(element);
   const fontSize = element.fontSize;
   const family = getFontFamilyString({ fontFamily });
-  const font = getFontString({ fontSize, fontFamily });
-  const lineHeightPx = getLineHeightInPx(fontSize, getLineHeight(fontFamily));
   const isDark = renderConfig.theme === THEME.DARK;
   const fill = applyDarkModeFilter(element.strokeColor, isDark);
-  const context = measurer();
-  const heatValues = element.heatmap
-    ? element.cells
-        .flat()
-        .map((c) => Number(c.text))
-        .filter((n) => Number.isFinite(n))
-    : [];
-  const range = heatValues.length
-    ? { min: Math.min(...heatValues), max: Math.max(...heatValues) }
-    : null;
+  // Shared with the canvas renderer. This used to be an inlined copy that
+  // flattened every cell, so an exported matrix could be shaded on a different
+  // range from the one on screen — and after ADR 0027's header-row exclusion
+  // the two would have disagreed outright.
+  const range = heatRange(element);
 
   if (element.showIndices) {
     for (let col = 0; col < cols; col++) {
@@ -144,17 +138,10 @@ export const renderTableTextToSvg = (
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const text = getCell(element, row, col)?.text ?? "";
-      if (!text) {
+      const resolved = resolveCellText(element, row, col, xs, ys);
+      if (!resolved) {
         continue;
       }
-      const cellWidth = xs[col + 1]! - xs[col]!;
-      const maxWidth = cellWidth - CELL_PADDING * 2;
-      if (maxWidth < 12) {
-        continue;
-      }
-      const isHeader = element.headerRow && row === 0;
-      const lines = getWrappedTextLines(text, font, maxWidth);
       const cell = getCell(element, row, col);
       const cellFillColor = cellFill(element, row, col, range);
       const ink = cell?.color
@@ -164,33 +151,24 @@ export const renderTableTextToSvg = (
             fill,
           );
 
-      lines.forEach((line, index) => {
-        const y = ys[row]! + CELL_PADDING + index * lineHeightPx;
-        if (y > ys[row + 1]!) {
-          return;
-        }
-        const anchor =
-          element.textAlign === "right"
-            ? "end"
-            : element.textAlign === "center"
-            ? "middle"
-            : "start";
-        const x =
-          element.textAlign === "right"
-            ? xs[col + 1]! - CELL_PADDING
-            : element.textAlign === "center"
-            ? (xs[col]! + xs[col + 1]!) / 2
-            : xs[col]! + CELL_PADDING;
-        if (context) {
-          context.font = font;
-        }
+      // `anchorX` carries the same distinction `text-anchor` does, so the SVG
+      // path needs no arithmetic of its own — which is the point of resolving
+      // it once for both renderers.
+      const anchor =
+        resolved.align === "right"
+          ? "end"
+          : resolved.align === "center"
+          ? "middle"
+          : "start";
+      resolved.lines.forEach((line) => {
         node.appendChild(
-          svgText(doc, line.text, x, y, {
+          svgText(doc, line.text, resolved.anchorX, line.y, {
             fill: ink,
             fontFamily: family,
             fontSize,
             anchor,
-            weight: isHeader ? "bold" : undefined,
+            weight: resolved.bold ? "bold" : undefined,
+            fontStyle: resolved.italic ? "italic" : undefined,
           }),
         );
       });

@@ -14,7 +14,7 @@ import type { RoughCanvas } from "roughjs/bin/canvas";
 import type { RoughGenerator } from "roughjs/bin/generator";
 import type { Options } from "roughjs/bin/core";
 
-import type { ExcalidrawTableElement, TableCell } from "./types";
+import type { ExcalidrawTableElement, FontString, TableCell } from "./types";
 
 /**
  * Geometry and drawing for a table, which is one element owning a whole grid.
@@ -362,9 +362,32 @@ export const gridBox = (element: ExcalidrawTableElement) => {
 
 const numericCells = (element: ExcalidrawTableElement) =>
   element.cells
+    // A header row holds labels, and a label that parses as a number — a
+    // column headed `2020` — was both heat-coloured and counted in the range
+    // that scales every other cell. It is a label whichever way it reads.
+    .filter((_, row) => !(element.headerRow && row === 0))
     .flat()
     .map((cell) => Number(cell.text))
     .filter((n) => Number.isFinite(n));
+
+/**
+ * The value range a heatmap scales against, or null when there is not one.
+ *
+ * Shared so the canvas and SVG renderers cannot disagree about it. They did:
+ * the SVG path had its own inlined copy that flattened every cell, so an
+ * exported matrix could be shaded differently from the one on screen.
+ */
+export const heatRange = (
+  element: ExcalidrawTableElement,
+): { min: number; max: number } | null => {
+  if (!element.heatmap) {
+    return null;
+  }
+  const values = numericCells(element);
+  return values.length
+    ? { min: Math.min(...values), max: Math.max(...values) }
+    : null;
+};
 
 /**
  * Heatmap colour for a value, low to high.
@@ -585,6 +608,146 @@ export const generateTableShapes = (
   return shapes;
 };
 
+/** The family a table's text is set in. Matrices are read as numbers. */
+export const cellFontFamily = (element: ExcalidrawTableElement) =>
+  element.variant === "matrix" ? FONT_FAMILY.Cascadia : FONT_FAMILY.Excalifont;
+
+/**
+ * A cell's font, with weight and style applied.
+ *
+ * CSS font shorthand orders style before weight before size, so italic has to
+ * come first; `getFontString` returns "<size>px <families>", so prefixing is
+ * the whole job. One function knows that grammar, rather than the two string
+ * substitutions this replaced.
+ */
+export const cellFont = (
+  element: ExcalidrawTableElement,
+  bold: boolean,
+  italic: boolean,
+): FontString => {
+  const base = getFontString({
+    fontSize: element.fontSize,
+    fontFamily: cellFontFamily(element),
+  });
+  if (!bold && !italic) {
+    return base;
+  }
+  return `${italic ? "italic " : ""}${
+    bold ? "bold " : ""
+  }${base}` as FontString;
+};
+
+/** A cell's text, wrapped and placed. */
+export interface ResolvedCellText {
+  align: "left" | "center" | "right";
+  verticalAlign: "top" | "middle" | "bottom";
+  font: FontString;
+  /** Resolved weight and style, so a caller that cannot read a CSS font
+   * shorthand — SVG sets `font-weight` and `font-style` separately — does not
+   * have to parse one back out of `font`. */
+  bold: boolean;
+  italic: boolean;
+  /**
+   * Where the text hangs from horizontally. What it means depends on `align` —
+   * the left edge, the centre, or the right edge. That is exactly the
+   * distinction SVG's `text-anchor` draws, so the SVG renderer uses it
+   * directly, and a canvas renderer subtracts a measured width from it.
+   */
+  anchorX: number;
+  lines: { text: string; y: number }[];
+}
+
+/**
+ * Resolve one cell's text: alignment on both axes, weight, style, wrapping and
+ * the final position of every line. `null` when there is nothing to draw.
+ *
+ * ADR 0027. This exists because the alignment maths lived twice — once in
+ * `drawTableOnCanvas` and once in `renderTableTextToSvg` — and two axes and
+ * four inheritable properties would have made that two copies of something
+ * worth getting wrong. 0026 paid for this lesson once already: SVG export
+ * emitted a placeholder for all three types because the canvas path was the
+ * only one anybody looked at. Neither renderer computes a position now.
+ *
+ * Note the wrapping uses the RESOLVED font. Wrapping bold text with regular
+ * metrics under-wraps it, which is why a bold header could overflow its cell.
+ */
+export const resolveCellText = (
+  element: ExcalidrawTableElement,
+  row: number,
+  col: number,
+  xs: readonly number[],
+  ys: readonly number[],
+): ResolvedCellText | null => {
+  const cell = getCell(element, row, col);
+  const text = cell?.text ?? "";
+  if (!text) {
+    return null;
+  }
+
+  const left = xs[col]!;
+  const right = xs[col + 1]!;
+  const top = ys[row]!;
+  const bottom = ys[row + 1]!;
+  const maxWidth = right - left - CELL_PADDING * 2;
+  // A column dragged very narrow would otherwise spend layout time wrapping
+  // text into a sliver nobody can read. Scene units against a scene-unit
+  // threshold — the two must not be mixed.
+  if (maxWidth < MIN_LEGIBLE_WIDTH) {
+    return null;
+  }
+
+  const isHeader = element.headerRow && row === 0;
+  // `??` and not `||`: false is a real answer for bold, and it has to be able
+  // to turn the header row's automatic weight back off.
+  const bold = cell?.bold ?? isHeader;
+  const italic = cell?.italic ?? false;
+  const font = cellFont(element, bold, italic);
+
+  const align = cell?.align ?? element.textAlign;
+  // A scene can reach the renderer without passing through `restore`, so the
+  // element's own default is defended here too rather than assumed present.
+  const verticalAlign = cell?.verticalAlign ?? element.verticalAlign ?? "top";
+
+  const wrapped = getWrappedTextLines(text, font, maxWidth);
+  const lineHeightPx = getLineHeightInPx(
+    element.fontSize,
+    getLineHeight(cellFontFamily(element)),
+  );
+
+  const free = bottom - top - wrapped.length * lineHeightPx;
+  const offset =
+    verticalAlign === "middle"
+      ? free / 2
+      : verticalAlign === "bottom"
+      ? free - CELL_PADDING
+      : CELL_PADDING;
+  // Never tighter than the cell's own padding: a block taller than its row
+  // would otherwise start above the top edge and lose its first line.
+  const startY = top + Math.max(CELL_PADDING, offset);
+
+  const anchorX =
+    align === "right"
+      ? right - CELL_PADDING
+      : align === "center"
+      ? (left + right) / 2
+      : left + CELL_PADDING;
+
+  return {
+    align,
+    verticalAlign,
+    font,
+    bold,
+    italic,
+    anchorX,
+    lines: wrapped
+      .map((line, index) => ({
+        text: line.text,
+        y: startY + index * lineHeightPx,
+      }))
+      .filter((line) => line.y <= bottom),
+  };
+};
+
 /**
  * Draw the table's text.
  *
@@ -613,17 +776,12 @@ export const drawTableOnCanvas = (
   const ys = offsets(element.rowHeights, box.height).map((y) => box.y + y);
   const rows = tableRowCount(element);
   const cols = tableColCount(element);
-  const isMatrix = element.variant === "matrix";
 
-  const fontFamily = isMatrix ? FONT_FAMILY.Cascadia : FONT_FAMILY.Excalifont;
+  const fontFamily = cellFontFamily(element);
   const fontSize = element.fontSize;
   const font = getFontString({ fontSize, fontFamily });
-  const lineHeightPx = getLineHeightInPx(fontSize, getLineHeight(fontFamily));
   const ink = applyDarkModeFilter(element.strokeColor, isDarkMode);
-  const values = element.heatmap ? numericCells(element) : [];
-  const range = values.length
-    ? { min: Math.min(...values), max: Math.max(...values) }
-    : null;
+  const range = heatRange(element);
 
   context.save();
   context.fillStyle = ink;
@@ -658,26 +816,21 @@ export const drawTableOnCanvas = (
 
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
-      const text = getCell(element, row, col)?.text ?? "";
-      if (!text) {
-        continue;
-      }
-      const cellWidth = xs[col + 1]! - xs[col]!;
-      const cellHeight = ys[row + 1]! - ys[row]!;
-      const maxWidth = cellWidth - CELL_PADDING * 2;
-      // A column dragged very narrow would otherwise spend layout time
-      // wrapping text into a sliver nobody can read. Compared in scene units
-      // against a scene-unit threshold — the two must not be mixed.
-      if (maxWidth < MIN_LEGIBLE_WIDTH) {
+      const resolved = resolveCellText(element, row, col, xs, ys);
+      if (!resolved) {
         continue;
       }
 
-      const lines = getWrappedTextLines(text, font, maxWidth);
       // Clip so an overfull cell is visibly cut off at its own border rather
       // than bleeding into its neighbour and looking like a rendering bug.
       context.save();
       context.beginPath();
-      context.rect(xs[col]!, ys[row]!, cellWidth, cellHeight);
+      context.rect(
+        xs[col]!,
+        ys[row]!,
+        xs[col + 1]! - xs[col]!,
+        ys[row + 1]! - ys[row]!,
+      );
       context.clip();
 
       // An explicit cell colour wins. Otherwise a cell painted by the heatmap
@@ -690,27 +843,17 @@ export const drawTableOnCanvas = (
         ? applyDarkModeFilter(cell.color, isDarkMode)
         : inkOn(fill ? applyDarkModeFilter(fill, isDarkMode) : null, ink);
 
-      const isHeader = element.headerRow && row === 0;
-      context.font = isHeader
-        ? getFontString({ fontSize, fontFamily }).replace(
-            `${fontSize}px`,
-            `bold ${fontSize}px`,
-          )
-        : font;
+      context.font = resolved.font;
 
-      lines.forEach((line, index) => {
-        const y = ys[row]! + CELL_PADDING + index * lineHeightPx;
-        if (y > ys[row + 1]!) {
-          return;
-        }
+      resolved.lines.forEach((line) => {
         const width = context.measureText(line.text).width;
         const x =
-          element.textAlign === "right"
-            ? xs[col + 1]! - CELL_PADDING - width
-            : element.textAlign === "center"
-            ? (xs[col]! + xs[col + 1]!) / 2 - width / 2
-            : xs[col]! + CELL_PADDING;
-        context.fillText(line.text, x, y);
+          resolved.align === "right"
+            ? resolved.anchorX - width
+            : resolved.align === "center"
+            ? resolved.anchorX - width / 2
+            : resolved.anchorX;
+        context.fillText(line.text, x, line.y);
       });
       context.restore();
     }

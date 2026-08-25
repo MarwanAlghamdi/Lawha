@@ -211,13 +211,25 @@ export type ExcalidrawTableElement = _ExcalidrawElementBase &
     /** Whether row 0 is styled as a header. */
     headerRow: boolean;
     /**
-     * Horizontal alignment of every cell's text.
+     * Default horizontal alignment for the grid's text.
      *
-     * Element-level rather than per cell: a column of numbers aligned three
-     * different ways is a mistake, not a feature, and per-cell alignment is
-     * the kind of state that only ever gets set by accident.
+     * Was the only setting until ADR 0027; it is now what a cell falls back to
+     * when it does not override. 0026's worry — a column aligned three ways by
+     * accident — is answered by where the control writes rather than by not
+     * having one: setting a single cell takes selecting that cell first, while
+     * clicking the table and pressing centre still aligns the whole grid.
      */
     textAlign: "left" | "center" | "right";
+    /**
+     * Default vertical alignment for the grid's text. ADR 0027.
+     *
+     * `"top"` is what every build before 0027 drew unconditionally, so it is
+     * the default and no existing board moves. A build older than this one has
+     * no such key at all — `restore.ts` supplies it, and the renderer falls
+     * back to `"top"` regardless, because a scene reaches the renderer from
+     * more directions than `restore` covers.
+     */
+    verticalAlign: "top" | "middle" | "bottom";
     /**
      * Cell text size.
      *
@@ -245,6 +257,22 @@ export type TableCell = {
    * which is what keeps a heatmap legible at both ends of its ramp.
    */
   color: string | null;
+  /**
+   * Per-cell text overrides (ADR 0027). Each is optional AND nullable, and the
+   * two are not the same thing:
+   *
+   *  - **absent** — written by a build older than 0027. Inherit.
+   *  - **`null`** — set back to inheriting on purpose. Inherit.
+   *  - a value — use it.
+   *
+   * A results table is a label column and then numbers, so it genuinely wants
+   * two horizontal alignments; the best row genuinely wants to be bold. All of
+   * it resolves through `resolveCellText`, never by reading these directly.
+   */
+  align?: "left" | "center" | "right" | null;
+  verticalAlign?: "top" | "middle" | "bottom" | null;
+  bold?: boolean | null;
+  italic?: boolean | null;
 };
 
 /**
