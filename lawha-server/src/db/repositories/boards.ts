@@ -69,6 +69,46 @@ export const toPublicBoard = (
   folderId,
 });
 
+/**
+ * A board in the trash, as its owner sees it (ADR 0029).
+ *
+ * A separate shape from `PublicBoard` rather than two more optional fields on
+ * it. `PublicBoard` is what a *live* board looks like, and half of it is
+ * meaningless here — link access, guest editing and folder filing all describe
+ * how a board is reached, and nothing reaches a deleted board. Widening the
+ * live shape would put six fields on every card in the dashboard that only
+ * ever matter on a screen the dashboard does not show.
+ *
+ * `purgeAt` is computed here and sent, rather than leaving the client to add
+ * thirty days to `deletedAt` itself. The retention window is a server setting
+ * (`LAWHA_TRASH_RETENTION_DAYS`), the client cannot read it, and a client that
+ * guessed would tell people a date the sweep does not agree with. `null` means
+ * retention is switched off on this deployment and nothing will be purged —
+ * which is a different sentence from "purged soon", and has to be able to say
+ * so.
+ */
+export interface TrashedBoard {
+  id: string;
+  name: string;
+  deletedAt: number;
+  updatedAt: number;
+  purgeAt: number | null;
+}
+
+export const toTrashedBoard = (
+  row: BoardRow,
+  retentionMs: number,
+): TrashedBoard => ({
+  id: row.id,
+  name: row.name,
+  // Non-null by construction: the only query that produces these rows filters
+  // `deleted_at IS NOT NULL`. Asserted rather than defaulted to 0, because a 0
+  // here would render as "deleted in 1970" and expire instantly.
+  deletedAt: row.deleted_at!,
+  updatedAt: row.updated_at,
+  purgeAt: retentionMs > 0 ? row.deleted_at! + retentionMs : null,
+});
+
 export class BoardsRepository {
   constructor(private readonly db: LawhaDatabase) {}
 
@@ -228,6 +268,139 @@ export class BoardsRepository {
     this.db
       .prepare("UPDATE boards SET deleted_at = ? WHERE id = ?")
       .run(Date.now(), boardId);
+  }
+
+  // --- trash (ADR 0029) ----------------------------------------------------
+
+  /**
+   * The caller's own trash, newest deletion first.
+   *
+   * **Owned, not shared.** `listForUser` above joins `board_members` because a
+   * board someone shared with you belongs on your dashboard; this one does not,
+   * because only the owner may delete a board (the DELETE route enforces that)
+   * and therefore only the owner may undo it. Joining members here would show
+   * an editor a board they cannot restore and cannot purge — a row whose every
+   * button is disabled — and, worse, would announce to them that the owner
+   * deleted it, which is the owner's business.
+   */
+  listTrashedForUser(userId: string): BoardRow[] {
+    return this.db
+      .prepare(
+        `SELECT * FROM boards
+          WHERE owner_id = ?
+            AND deleted_at IS NOT NULL
+          ORDER BY deleted_at DESC`,
+      )
+      .all(userId) as BoardRow[];
+  }
+
+  /**
+   * Puts a board back.
+   *
+   * `updated_at` is deliberately NOT touched. The dashboard sorts on it, and
+   * bumping it would file a board restored from six weeks ago at the top of
+   * the list as though it were the thing you worked on most recently. What was
+   * restored is the board you had, at the position it had; the restore is an
+   * event about the row's *existence*, not about its contents.
+   *
+   * Guarded on `deleted_at IS NOT NULL` rather than on the id alone so that a
+   * double-submitted restore cannot rewrite a live board's row at all — the
+   * second one matches nothing and reports it.
+   */
+  restore(boardId: string): boolean {
+    const result = this.db
+      .prepare(
+        "UPDATE boards SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+      )
+      .run(boardId);
+    return result.changes > 0;
+  }
+
+  /**
+   * Ids of boards whose retention window has run out.
+   *
+   * Returned rather than deleted here, because the row is not the whole board:
+   * its uploaded images live on disk under `filesDir/rooms/<id>` and in the
+   * `files` table, and **neither is reachable by a foreign key**. `files`
+   * stores `container_id` as plain TEXT with no `REFERENCES boards (id)` — see
+   * `001_init.sql:98` — so the cascade that cleans up `board_scenes`,
+   * `board_tags`, `board_members`, `board_folders` and `board_invites` does not
+   * touch it. The caller needs the ids in order to sweep the parts SQLite will
+   * not sweep for it.
+   */
+  findExpiredTrash(deletedBefore: number): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT id FROM boards
+            WHERE deleted_at IS NOT NULL
+              AND deleted_at < ?
+            ORDER BY deleted_at ASC`,
+        )
+        .all(deletedBefore) as { id: string }[]
+    ).map((row) => row.id);
+  }
+
+  /**
+   * Removes a board and everything the database holds about it, for good.
+   *
+   * Two statements in one transaction, and the order matters only in that
+   * neither may land without the other. `board_scenes`, `board_tags`,
+   * `board_members`, `board_folders` and `board_invites` all carry
+   * `ON DELETE CASCADE` from `boards (id)` and `PRAGMA foreign_keys = ON` is
+   * set in `db/index.ts`, so they go with the row. The `files` rows do not —
+   * that table names its container as free text — so they are deleted by hand.
+   *
+   * **Guarded on `deleted_at IS NOT NULL`.** A hard delete is the one operation
+   * here with no undo, and this is the line that makes it impossible to reach a
+   * live board with it: a caller that passes the wrong id destroys nothing
+   * unless that id is already in the trash. The route checks ownership; this
+   * checks that the board was ever deleted at all.
+   *
+   * Returns false when nothing matched, so a caller sweeping a list can tell a
+   * board that was restored a moment ago from one it actually purged.
+   */
+  purge(boardId: string): boolean {
+    return this.db.transaction(() => {
+      const result = this.db
+        .prepare("DELETE FROM boards WHERE id = ? AND deleted_at IS NOT NULL")
+        .run(boardId);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      this.db
+        .prepare("DELETE FROM files WHERE scope = 'rooms' AND container_id = ?")
+        .run(boardId);
+
+      // Inside the same transaction as the DELETE, so there is no instant at
+      // which the row is gone and the id is not yet marked spent. That instant
+      // is exactly long enough for a queued scene write to recreate the board —
+      // see migration 020 for why that route hands ownership to the writer.
+      this.db
+        .prepare(
+          "INSERT OR REPLACE INTO purged_boards (id, purged_at) VALUES (?, ?)",
+        )
+        .run(boardId, Date.now());
+
+      return true;
+    })();
+  }
+
+  /**
+   * Whether this id named a board that has been destroyed.
+   *
+   * The question `findById` cannot answer, because the answer is precisely
+   * that there is no row. Every route that treats "no board here" as "so make
+   * one" has to ask this first.
+   */
+  isPurged(boardId: string): boolean {
+    return (
+      this.db
+        .prepare("SELECT 1 FROM purged_boards WHERE id = ?")
+        .get(boardId) !== undefined
+    );
   }
 
   // --- authz surface -------------------------------------------------------

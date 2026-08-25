@@ -87,7 +87,8 @@ services:
     # exactly that reason — it holds only the values that belong to this
     # compose file rather than to the operator. Everything else
     # (LAWHA_REQUIRE_AUTH, LAWHA_ALLOW_OPEN_REGISTRATION,
-    # LAWHA_SESSION_TTL_DAYS, the rate limits, LAWHA_MASTER_PASSWORD,
+    # LAWHA_SESSION_TTL_DAYS, LAWHA_TRASH_RETENTION_DAYS, the rate limits,
+    # LAWHA_MASTER_PASSWORD,
     # LAWHA_ORIGIN, LAWHA_TRUST_PROXY_HOPS,
     # LAWHA_ADMIN_*) is deliberately absent so lawha.env actually wins. Their
     # defaults in lawha-server/src/config.ts are identical to what used to be

@@ -165,6 +165,12 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       secureCookiesEffective: resolveSecureCookie(ctx, req),
       masterPasswordConfigured: ctx.masterPassword.enabled,
       sessionTtlDays: ctx.config.sessionTtlDays,
+      // How long a deleted board is recoverable before the sweep destroys it
+      // (ADR 0029). 0 travels as 0 for the same reason `sessionTtlDays` does —
+      // it means "kept for ever", and flattening it here would leave the panel
+      // printing "0 days" for the setting that decides whether user data is
+      // ever irreversibly removed.
+      trashRetentionDays: ctx.config.trashRetentionDays,
       dbPath: ctx.config.dbPath,
       filesDir: ctx.config.filesDir,
       // Real accounts: the `anonymous` stand-in is machinery, and counting it

@@ -99,6 +99,25 @@ const envSchema = z.object({
    */
   LAWHA_SESSION_TTL_DAYS: z.coerce.number().int().nonnegative().default(0),
   /**
+   * How long a deleted board waits in the trash before it is really gone
+   * (ADR 0029). Thirty days by default.
+   *
+   * **0 means "keep for ever", not "purge immediately".** That reading is not
+   * a nicety, it is the safe direction to fail in: the two ways this setting
+   * gets a zero are an operator typing one and an operator typing something
+   * `z.coerce.number()` turns into one, and under the other reading either
+   * mistake hard-deletes every board in the trash on the next tick, with no
+   * undo. Under this reading the worst case is a trash that grows. It also
+   * matches `LAWHA_SESSION_TTL_DAYS` directly above, where 0 already means
+   * "never expires", so an operator reading the two lines together is not
+   * being asked to hold two opposite conventions in mind.
+   *
+   * An operator who genuinely wants deletion to be immediate has the "Delete
+   * for ever" button, which does exactly that for one board at a time and asks
+   * first.
+   */
+  LAWHA_TRASH_RETENTION_DAYS: z.coerce.number().int().nonnegative().default(30),
+  /**
    * `auto` (the default), `true` or `false`. See `SecureCookieMode` above for
    * why three values rather than two — briefly, one boolean cannot serve a
    * plain-http LAN origin and an https tunnel at the same time, and this
@@ -456,6 +475,14 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env) => {
      * and every other reader would only have to translate it back.
      */
     sessionTtlMs: parsed.LAWHA_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000,
+    /**
+     * 0 carries "never purge" through unchanged, the same way `sessionTtlMs`
+     * carries "never expires". `BoardsRepository.findExpiredTrash` is never
+     * called at all in that case — the sweep returns before it asks — so the
+     * zero never reaches a comparison that would treat it as a cutoff of
+     * 1970 and select the entire trash.
+     */
+    trashRetentionMs: parsed.LAWHA_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000,
     secureCookies: parsed.LAWHA_SECURE_COOKIES,
     allowOpenRegistration: parsed.LAWHA_ALLOW_OPEN_REGISTRATION,
     requireAuth: parsed.LAWHA_REQUIRE_AUTH,
@@ -491,6 +518,10 @@ export const loadConfig = (env: NodeJS.ProcessEnv = process.env) => {
      * would read as a broken server.
      */
     sessionTtlDays: parsed.LAWHA_SESSION_TTL_DAYS,
+    /** Reported by /api/admin/config alongside `sessionTtlDays`, and for the
+     * same reason: 0 has to reach the panel as 0 so it can be rendered as
+     * "Kept for ever" rather than "0 days". */
+    trashRetentionDays: parsed.LAWHA_TRASH_RETENTION_DAYS,
     registerLimitPerIp: parsed.LAWHA_REGISTER_LIMIT_PER_IP,
     loginLimitPerIp: parsed.LAWHA_LOGIN_LIMIT_PER_IP,
     loginLimitPerUsername: parsed.LAWHA_LOGIN_LIMIT_PER_USERNAME,

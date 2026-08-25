@@ -6,6 +6,7 @@ import { createApp } from "./http/app.js";
 import { createSocketAuthenticator } from "./http/middleware/session.js";
 import { resolveAnonymousUser } from "./lib/anonymousUser.js";
 import { seedFirstAdmin } from "./lib/firstBootAdmin.js";
+import { startTrashSweep } from "./lib/trashSweep.js";
 import { createSocketServer } from "./socket/index.js";
 
 /**
@@ -98,6 +99,13 @@ const sessionSweep = setInterval(() => {
   }
 }, 60 * 60 * 1000);
 sessionSweep.unref();
+
+// The other half of "deleted": a board sits in the trash for
+// LAWHA_TRASH_RETENTION_DAYS and is then removed for good, images and all
+// (ADR 0029). Runs once here and hourly after — see `startTrashSweep` for why
+// the immediate pass matters and why every pass is wrapped.
+const trashSweep = startTrashSweep(ctx);
+void trashSweep;
 
 // Before the promotion below, not after: on a genuinely empty database this is
 // what creates the account that the promotion would otherwise report as
