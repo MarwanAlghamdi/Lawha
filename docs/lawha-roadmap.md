@@ -1,6 +1,6 @@
 # Lawha — state of the build and the road ahead
 
-Written at the end of Phase 1 and updated at the end of every phase since — currently Phase 5 — so a later session can pick this up cold. Section 2 is the part to read first; §4.17 is the most recent batch — the escrow's second half — and §4.12 is the review pass that is still the best example of how this project reads its own claims.
+Written at the end of Phase 1 and updated at the end of every phase since — currently Phase 5 — so a later session can pick this up cold. Section 2 is the part to read first; §4.22 is the most recent batch — three of the six handoff items — and §4.12 is the review pass that is still the best example of how this project reads its own claims.
 
 For how to run and configure it, see `README.md`. For the architectural invariants and design decisions, see §2 below.
 
@@ -24,7 +24,7 @@ Screenshots: `../screenshots/` (Phase 1) and `/tmp/lawha-phase2-shots/` (Phase 2
 
 ### Backend — done, and more complete than the UI
 
-`lawha-server/` is a yarn workspace: socket.io relay + REST + SQLite + on-disk files, plus `scripts/` for the operator tools (backup, restore) and their `node:test` suites. Measure the test counts, do not recall them — they moved twice while this paragraph was being written. The whole REST surface, as mounted in `src/http/app.ts` — everything below has a UI now except `GET /api/admin/config` (known issue 19) and `/api/metrics`:
+`lawha-server/` is a yarn workspace: socket.io relay + REST + SQLite + on-disk files, plus `scripts/` for the operator tools (backup, restore) and their `node:test` suites. Measure the test counts, do not recall them — they moved twice while this paragraph was being written. Most of the REST surface follows, and **`src/http/app.ts` alone will not give you the whole of it**: three routers are mounted from inside other routers rather than beside them — `/api/admin/backup/*` from `routes/admin.ts:795`, so it inherits `requireAdmin`, and members and invites from `routes/boards.ts:646-647` — so enumerate `src/http/routes/` when the answer has to be complete. Everything below has a screen except `/api/health` and `/api/metrics`, which are operator endpoints with nothing to render. `GET /api/admin/config` used to be named here as the third exception and has not been one since Phase 5 — `lawha/admin/LawhaServerConfigCard.tsx` renders it on `/admin`, known issue 19 closed it, and this sentence was not updated with it:
 
 ```
 POST   /api/auth/register        {username, password}   -> 201 + session cookie
@@ -33,8 +33,16 @@ POST   /api/auth/logout
 GET    /api/auth/me
 POST   /api/auth/password        {currentPassword, newPassword}
 PATCH  /api/auth/me              {username?, colorIndex?, laserColorIndex?, avatarOnCursor?}
-DELETE /api/auth/me              {password}             -> 204, cascades
+DELETE /api/auth/me              {password}             -> 204, cascades. Immediate and irreversible;
+                                                           the thirty-day window is the ADMIN path only
 GET    /api/auth/config          -> {requireAuth, allowOpenRegistration, hasMasterPassword}
+POST   /api/auth/master          {password}             -> the skeleton key, ticked deliberately. No
+                                                           username: it mints an `admin_sessions` row
+                                                           with nobody behind it, twelve hours, so
+                                                           `req.user` stays undefined (migration 007)
+GET    /api/auth/origins                                -> {lanOrigins, publicShareOrigin}; session-gated,
+                                                           because the tunnel URL is not a fact for
+                                                           anonymous callers
 
 PUT    /api/users/me/avatar                             -> raw image bytes; type sniffed, never trusted
 DELETE /api/users/me/avatar
@@ -54,15 +62,54 @@ POST   /api/admin/users/:id/reset-code  {lock}          -> {code, expiresAt, rev
                                                            earlier codes. Replaces the removed set-password
                                                            route, which now 404s (ADR 0021)
 POST   /api/admin/users/:id/admin     {isAdmin}
+POST   /api/admin/users          {username, password?}  -> the server generates the password when it is
+                                                           omitted, and shows it ONCE
+POST   /api/admin/users/:id/sessions/revoke
+POST   /api/admin/users/:id/disabled  {disabled}        -> off, not gone; undone by pressing it again
+DELETE /api/admin/users/:id      {username}             -> typed-name confirmation. Soft: `deleted_at` is
+                                                           stamped and the sweep destroys it after
+                                                           LAWHA_TRASH_RETENTION_DAYS. 404 for the
+                                                           `anonymous` stand-in, 400 for yourself
+                                                           (ADR 0031)
+POST   /api/admin/users/:id/restore                     -> 404 unless it is in the trash
+GET    /api/admin/audit                                 -> the durable-change log
+GET    /api/admin/backup/status                         -> these five are `routes/adminBackup.ts`, mounted
+GET    /api/admin/backup/archive                           INSIDE the admin router (admin.ts:795) so they
+POST   /api/admin/backup/snapshot                          inherit `requireAdmin` rather than re-declare
+POST   /api/admin/backup/archive/:entryId/ticket           it — they hand over the whole database, which
+GET    /api/admin/backup/download/:ticketId                is the worst place to rely on remembering
+                                                           a guard (ADR 0017)
 
 GET    /api/boards                                      -> boards for this user
-POST   /api/boards               {id?, name?}
+POST   /api/boards               {id?, name?}           -> 410 GONE for an id whose board was purged
 GET    /api/boards/:boardId                             -> board + members
 PATCH  /api/boards/:boardId      {name?, linkAccess?, tagIds?, folderId?}
 POST   /api/boards/:boardId/duplicate                   -> ciphertext copied verbatim, rev restarts at 1
 POST   /api/boards/:boardId/access                      -> the ONLY unauthenticated route: "may I open
-                                                           this?", and a board-scoped pass if yes
-DELETE /api/boards/:boardId                             -> soft delete
+                                                           this?", and a board-scoped pass if yes.
+                                                           410 GONE on a purged id
+DELETE /api/boards/:boardId                             -> soft delete: into the trash for
+                                                           LAWHA_TRASH_RETENTION_DAYS (default 30),
+                                                           then purged for good
+GET    /api/boards/trash                                -> this owner's trash, plus `retentionDays` so an
+                                                           EMPTY trash can still state the rule.
+                                                           Declared BEFORE /:boardId on purpose —
+                                                           the other order answers it with
+                                                           boardId = "trash" and reports 403
+                                                           (`boardsRouteOrder.test.ts`)
+POST   /api/boards/:boardId/restore                     -> owner only, 404 if it is not in the trash
+DELETE /api/boards/:boardId/permanent                   -> owner only, trashed boards only. Purges the
+                                                           row, the scene and the images, and retires
+                                                           the id in `purged_boards` (ADR 0029)
+
+GET    /api/boards/:boardId/invites                     -> minting a code, so it is board-scoped
+POST   /api/boards/:boardId/invites
+DELETE /api/boards/:boardId/invites/:code
+
+GET    /api/invites/:code                               -> SPENDING a code, and deliberately NOT under
+POST   /api/invites/:code/redeem                           /api/boards: the redeemer has no access to
+                                                           the board yet, so there is no board-scoped
+                                                           gate they could pass (ADR 0014)
 
 GET    /api/boards/:boardId/members
 GET    /api/boards/:boardId/members/candidates
@@ -70,7 +117,12 @@ PUT    /api/boards/:boardId/members/:userId  {role}
 DELETE /api/boards/:boardId/members/:userId
 
 GET    /api/boards/:boardId/scene                       -> ciphertext + rev
-PUT    /api/boards/:boardId/scene                       -> CAS write
+PUT    /api/boards/:boardId/scene                       -> CAS write. Both answer 410 GONE for a purged
+                                                           id — the check sits in the shared
+                                                           `assertAccess` (scene.ts:112), not in PUT
+                                                           alone, and it runs BEFORE `allowMissing`,
+                                                           which is what stops a still-open tab
+                                                           recreating a board somebody destroyed
 
 GET    /api/tags                                        -> per-person, never shared
 POST   /api/tags                {name, color?}
@@ -90,7 +142,7 @@ GET    /api/health
 GET    /api/metrics                                     -> Prometheus text
 ```
 
-Two claims that used to live here are gone because they stopped being true: the test count (88, then 245, now 255 — measure it, do not recall it) and "endpoints that exist and are unused by any UI" — `board_members` and `tags` both have routes and screens now. Migration count is at 005.
+Two claims that used to live here are gone because they stopped being true: the test count (88, then 245, now 255 — measure it, do not recall it) and "endpoints that exist and are unused by any UI" — `board_members` and `tags` both have routes and screens now. The latest migration is **021** — twenty files, 001–010 and 012–021, because 011 was never used (§5 entry 28 records where that number went). Counted, not recalled: `ls lawha-server/src/db/migrations/`. The newest three arrived with ADR 0029 and ADR 0031 — 019 adds `idx_boards_deleted_at`, the partial index the trash view and the hourly sweep both read; 020 adds `purged_boards`, the tombstone that retires a destroyed board's id so `PUT /scene` cannot recreate it; 021 adds `users.deleted_at` and `idx_users_deleted_at`.
 
 ### Frontend — done
 
@@ -99,6 +151,10 @@ Two claims that used to live here are gone because they stopped being true: the 
 - Canvas chrome: `lawha/chrome/` — top bar, board title (inline rename), save status, presence stack, theme toggle, account button, overflow sheet, logo, sync pill. Share popover in `lawha/share/`.
 - Storage: `excalidraw-app/data/storage/` replaced Firebase entirely.
 - Board metadata client: `excalidraw-app/data/boards.ts` (best-effort, never throws).
+- Board trash: `lawha/home/LawhaTrash.tsx` plus the sidebar entry and the server's hourly `lib/trashSweep.ts` (ADR 0029). Deleting a board starts a thirty-day clock instead of hiding it for ever, and the dashboard can restore it or destroy it now. The reason it exists is not tidiness: `boards.deleted_at` had been a tombstone with no gravedigger since `001_init.sql`, so a deployment's storage only ever grew and getting a board back meant an operator clearing a timestamp by hand.
+- Admin account deletion: `lawha/admin/LawhaAdminAccountRow.tsx` against `DELETE /api/admin/users/:id` (ADR 0031). Typed-name confirmation, the same thirty-day window as the board trash — one knob, `LAWHA_TRASH_RETENTION_DAYS`, because "a deleted thing is kept for N days" is one rule and two knobs holding the same number is two chances to set one of them wrong. The rest of `/admin` — account list and search, create, disable, reset codes, audit, backup, server config — lives beside it in `lawha/admin/`.
+- N-dimensional tensors: `packages/element/src/tensorElement.ts` and the two renderers that read it, `renderer/lawhaSvg.ts` and `renderer/staticSvgScene.ts` (ADR 0030). `dims` had been typed `readonly number[]` since ADR 0026, but `const [depth, height, width] = element.dims` sat in two files, so `[8, 64, 32, 32]` — a batch of feature maps, which is most of what anyone draws a tensor for — silently discarded its trailing axis and drew as `[8, 64, 32]` while the properties panel still read the full shape. Rank is read by `tensorLayout()` now and destructured nowhere. It survived because every tensor fixture in the repository was 3-D.
+- Mermaid converter: `lawha/mermaid/` — 2,748 lines, none of them upstream's (ADR 0028). It costs nothing at merge time precisely because it lives here rather than in `packages/`; what it did need from `packages/` is five rows of known issue 20's table — four edits and one new file — and every one of those files was at exactly zero diff before it.
 
 ---
 
@@ -118,7 +174,7 @@ Each of these was learned the hard way; several were live bugs.
 7. **Do not add `@font-face` to `packages/excalidraw/fonts/fonts.css`.** Its contents are string-replaced at build time; anything added there works in dev and vanishes in production. Fonts load from `lawha/fonts.ts`.
 8. **The token bridge must be emitted at two specificities.** `theme.scss` re-declares properties under `.excalidraw.theme--dark` (two classes), which outranks a single `.excalidraw` selector. See `lawha-bridge.scss`.
 9. **No email. Anywhere.** Not in the schema, DTOs, or error text. A column existed for a few hours and was removed again in migration 003 — on a private network the recovery path is a phone call to the administrator, not a link in an inbox. Recovery is the admin panel, `LAWHA_MASTER_PASSWORD`, or `yarn --cwd lawha-server reset-password <user>`. Do not add SMTP. There **is** a reset link now (`/reset/<code>`, ADR 0021) and it does not weaken this: nothing sends it, the administrator hands it over by hand, and no address is stored to send it to.
-10. **`packages/` divergence is fourteen paths, and every addition needs an ADR.** (Thirteen until ADR 0019, which accounts for the fourteenth in its own header; this line had not been updated to match. Measured at 14 files / 2,332 insertions on 2026-08-18 — and the point of the rule is that you re-run the command rather than trust either number.) The list lives in known issue 20 and is measured, not recalled — `git diff --stat $(git merge-base upstream/master main)..main -- packages/`. Nine are for collaborator and laser colour (`docs/adr/0001`, `0002`, `0003`, `0006`); four are the pan momentum and right-drag (`docs/adr/0013`). The point was never the number, it is that upstream merges stay tractable — so weigh **where** an addition lands: a new file upstream does not have costs nothing at merge time, an edit to `App.tsx` costs the most. Do not add to the edited-file side without recording why.
+10. **`packages/` divergence is seventy-one paths — 22 added, 49 edited, 11,120 insertions against 117 deletions — and every addition needs an ADR.** (Measured 2026-08-26. This line has said "four", then "thirteen", then "fourteen"; each was right on the day it was written and wrong within a batch, which is the whole argument for the rule below. It said fourteen while known issue 20's own body already said seventy-one, so §2 and §5 disagreed with each other for several batches.) The list lives in known issue 20 and is measured, not recalled — `git diff --name-status $(git merge-base upstream/master main)..main -- packages/` for the split, `git diff --stat` for the volume. **Re-run the command; do not quote this sentence.** The point was never the number, it is that upstream merges stay tractable — so weigh **where** an addition lands: a new file upstream does not have costs nothing at merge time, an edit to `App.tsx` costs the most. Do not add to the edited-file side without recording why.
 11. **A phone bottom sheet must not be Radix popover content.** Radix's wrapper carries a `transform`, which becomes the containing block for `position: fixed` descendants, so `inset-inline: 0` collapses to the popper's zero-width box. `lawha/chrome/LawhaPanel.tsx` renders sheets directly into the editor container instead; put new panels through it.
 12. **Sheet rules are compound selectors (`.lw-ai.lw-ai--sheet`) on purpose.** A single-class rule ties with `.excalidraw .lw-ai`, and the winner would then depend on import order — which silently gave the sheet the popover's 330px width.
 13. **The account form is keyed on `user.id`.** Initialising its fields from a possibly-null user and syncing in an effect left one frame where the name field was empty while "Save changes" was enabled — one click from PATCHing an empty username.
@@ -126,7 +182,13 @@ Each of these was learned the hard way; several were live bugs.
 15. **The relay speaks the client's vocabulary, not its own.** `user-follow` carries `FOLLOW`/`UNFOLLOW`; the relay originally matched `SUBSCRIBE`/`UNSUBSCRIBE` and fell through to `leave` for everything else, so following silently did nothing. Its tests missed it by using the server's spelling. When adding a socket event, assert against what `packages/` actually sends.
 16. **Colours cross the wire as palette indices, never as hex.** The interactive canvas is filtered in dark mode, so which of an entry's two hexes is right depends on the _receiver's_ theme.
 17. **`LocalData.pauseSave("collaboration")` is active during a session**, so the server copy is the only durable one. "Saved" must mean the write landed.
-18. **Lawha needs a secure context. There is no plain-HTTP LAN deployment.** **The rule survives ADR 0012 and its reason moved — do not delete it on the grounds that the encryption is gone.** It used to be that every board key was minted with `window.crypto.subtle`. No key is minted now, but `generateIdFromFile` still computes every image's id with `crypto.subtle.digest` (`packages/excalidraw/data/blob.ts`), and browsers withhold `crypto.subtle` outside HTTPS and `localhost` exactly as before — on `http://192.168.x.x` it is simply `undefined`. The old failure was "Cannot read properties of undefined (reading 'generateKey')" at board creation; the current one is the same shape at image insert. What is no longer true is the sentence that used to follow: the product's premise is not end-to-end encryption. Dev servers for LAN or tailnet testing set `LAWHA_HTTPS_KEY` / `LAWHA_HTTPS_CERT` (see `certs/`, gitignored); a real deployment terminates TLS properly.
+18. ~~**Lawha needs a secure context. There is no plain-HTTP LAN deployment.**~~ **RETIRED by ADR 0018, amended rather than reversed by ADR 0022.** Kept numbered rather than deleted, for the same reason invariant 1 is: the others are cited by number all over this repo and renumbering would silently rewrite every one of those references.
+
+    **Plain HTTP behind a gateway is the shipped configuration.** `docker/nginx.conf` is one `listen 8080 default_server;` block that terminates no TLS; `docker-compose.yml:412` publishes `${LAWHA_PUBLISHED_PORT:-9002}:8080`; `lawha-server/scripts/deploymentConfig.test.mjs` pins both and asserts no host mapping ends in 80 or 443. ADR 0022 adds an **optional** second listener — `LAWHA_TLS=on` makes `docker/nginx-tls.sh` write a glob-included `listen 8443 ssl`, published as `${LAWHA_TLS_PORT:-9443}:8443` — and it is off by default.
+
+    **Why it fell, and it is worth reading because the words outlived the reason.** The premise died with ADR 0012: no board keys are minted, so there is nothing left for `crypto.subtle` to fail at. What remained was `generateIdFromFile`, and that call is wrapped in `try/catch` and returns `nanoid(40)` when the API is absent (`packages/excalidraw/data/blob.ts:260-272`). So the deployment **degrades** — the same image uploaded twice is stored twice, because ids stop being content-addressed — rather than going inert, and "inert rather than degraded" was the invariant's entire justification. ADR 0018 measured all three affected paths into a table rather than arguing it. `assertSecureContext`, which threw at the top of board import and export, is gone: `secureContextNote()` returns a sentence for the import report and never throws, because the thing it guarded is already caught one layer down where it can name the board.
+
+    **What is still true is not this invariant but its cost, and ADR 0018's amendment of 2026-08-06 is where it is written down.** The session cookie crosses the LAN in the clear on every request to `http://lawha.local`. There is no password to crack and no prompt to defeat — the cookie *is* the session, `LAWHA_SESSION_TTL_DAYS` is 30 here, and the audit log records the account rather than the transport, so a full takeover leaves nothing behind. `LAWHA_SECURE_COOKIES` is `auto` now (ADR 0022, `lawha-server/src/config.ts:140`), which flags the cookie `Secure` over the https origins and cannot over a plain-http one. **Lawha on this network is as private as the network is** — a reasonable position for a LAN you control, a poor one for guest Wi-Fi, and the difference should be a decision rather than an assumption. `mkcert`, a real certificate, or a tailnet are the three things that would actually fix it. (The dev server can still be given TLS for LAN or tailnet testing — `LAWHA_HTTPS_KEY` / `LAWHA_HTTPS_CERT`, read in `excalidraw-app/vite.config.mts:44-46`, certs gitignored under `certs/`. That is a convenience for testing a secure origin, not a requirement any more.)
 19. **No `window.alert`, `confirm` or `prompt` on any path the app can reach on its own.** A native dialog blocks the renderer's main thread until it is dismissed; fired from somewhere the user did not ask for it, that is a frozen tab, and it took three sessions to find the last one. User-initiated confirmations on the dashboard are the exception, and even those are on the list to replace.
 20. **Nothing may read the scene back out of the editor during teardown.** By `componentWillUnmount` the editor above has gone and returns an empty scene; persisting that overwrites the board. `Collab.leaveRoom` flushes `lastSyncedElements` instead.
 21. **A permission enforced in one layer is not enforced.** **Since ADR 0012 this is the only thing protecting a board — there is no encryption behind it, so a hole here is the whole failure rather than half of one.** `canEdit` existed for months with zero call sites, so `link_access: "view"` granted full write, byte-for-byte identical to `edit`. It is now checked in **four** places that must move together: the scene write, the relay's broadcast path, the client's view mode, and the image upload in `lawha-server/src/http/routes/files.ts`. Removing any one of them re-opens the hole silently, because the others keep the UI looking correct. The fourth was added late and is the invariant restating itself: `POST /api/files/rooms/:boardId/:fileId` asked only "can you access this board", so the same viewer whose scene write `scene.ts` refused could still write up to 4 MiB into that board's file directory and get a `files` row credited to them. Nothing failed; the UI looked correct throughout.
@@ -381,7 +443,7 @@ The database was destroyed. Not by a bug: by step 2 of the restore procedure in 
 
 `restore.mjs` inverts the order the old procedure got wrong. That one deleted the live data **before** anything had been proven about the archive replacing it. This one verifies the backup first and refuses before anything moves; then checkpoints the live database so `lawha.db` holds every page **before** it is renamed — without that step the move-aside would strand the tables in a `-wal` with no database beside it, the same hazard wearing a different hat — then moves it to `lawha.db.pre-restore-<stamp>` and copies the backup in. Nothing is deleted: only a `-wal` the checkpoint emptied, and the `-shm`, which SQLite rebuilds. A `-wal` that still holds pages is renamed alongside its database instead. It refuses outright while the server is running, because installing a file under a live process leaves it writing to a database that is no longer there.
 
-**Nineteen tests, in `lawha-server/scripts/*.test.mjs`, run by `yarn --cwd lawha-server test` alongside vitest.** They are `node:test` rather than vitest, and they live beside the scripts rather than under `tests/`, because the scripts are plain `.mjs` with no build step and the test should spawn the artefact an operator actually invokes. That choice has one cost, paid at integration: the root vitest config's default include glob matches `*.test.mjs`, so `yarn test:app` collected these two files, found no vitest suite in them and reported two red suites for tests that are green in the runner that owns them. `vitest.config.mts` now excludes `lawha-server/scripts/**` for the same reason it already excluded `e2e/**`. The first one is the experiment rather than a claim: one live database with an unchecked `-wal`, copied two ways, asserting that the `cp` comes back with zero tables and the backup comes back with every row. That is the bug, pinned where it happened.
+**One hundred and twenty-five tests, in four `lawha-server/scripts/*.test.mjs` files, and they are the whole of `yarn --cwd lawha-server test` — which is `node --test scripts/*.test.mjs` and nothing else.** No vitest runs alongside them; the server's own vitest files live under `lawha-server/src/**` and are collected by the root config, i.e. by `yarn test:app`. Measured 2026-08-26: backup 36, restore 38, encrypt-db 36, deploymentConfig 15, across 40 top-level TAP entries. A further eighteen are declared and never reach the counter on this machine, because five suites carry `{ skip: !ageAvailable }` and `age` is not on PATH — six of them in `backup.test.mjs`, twelve in `restore.test.mjs`. So the runner's own total moves with the environment as well as with the code: count it, do not quote this sentence, which has been wrong twice. They are `node:test` rather than vitest, and they live beside the scripts rather than under `tests/`, because the scripts are plain `.mjs` with no build step and the test should spawn the artefact an operator actually invokes. That choice has one cost, paid at integration: the root vitest config's default include glob matches `*.test.mjs`, so `yarn test:app` collected these files, found no vitest suite in them and reported red suites for tests that are green in the runner that owns them. `vitest.config.mts` now excludes `lawha-server/scripts/**` for the same reason it already excluded `e2e/**`. The first one is the experiment rather than a claim: one live database with an unchecked `-wal`, copied two ways, asserting that the `cp` comes back with zero tables and the backup comes back with every row. That is the bug, pinned where it happened.
 
 Verified against the live database with the docker stack up and healthy: `5 users, 4 boards, 4 board_scenes, 2 files`, `integrity_check ok`, one 262144-byte file with no sidecars, and `lawha.db-wal` untouched at the same size and mtime afterwards. Restore was then rehearsed on a copy of that real database — two extra accounts inserted and the process killed without closing, so they existed only in the `-wal` — and the pre-restore file came back with **seven** accounts while the restored file came back with five. That is the checkpoint-before-move step doing the only job it has.
 
@@ -395,7 +457,7 @@ Verified against the live database with the docker stack up and healthy: `5 user
 
 Six areas were worked at once and integrated in one pass. What follows is the part worth keeping: in four of the six, the defect was a single expression that had been read past many times because it looked like the thing it was not doing.
 
-**`proxy_set_header Host $host`.** nginx's `$host` strips the port; `$http_host` is the header as sent. The CSRF check compares `new URL(origin).host` against the raw `Host`, so from `https://192.168.1.50:9002` the origin carries `:9002` and the forwarded host did not. Every non-GET 403s and every GET succeeds: boards open, nothing can be saved, renamed, shared or deleted. That reads as a broken product, not as a missing four characters, and the websocket handshake fails separately through socket.io's CORS allowlist — one typo presenting as two unrelated bugs. Pinned from both sides: `csrfOrigin.test.ts` proves the stripped-port case 403s and the `$http_host` case passes, and `deploymentConfig.test.ts` asserts nginx has exactly two `Host` proxy headers and both are `$http_host`. The test helper had to be written against `node:http`, because `fetch` cannot set a chosen `Host` and the existing `testApp.request` overwrites `Origin` — which is precisely how this survived a suite that already had CSRF tests.
+**`proxy_set_header Host $host`.** nginx's `$host` strips the port; `$http_host` is the header as sent. The CSRF check compares `new URL(origin).host` against the raw `Host`, so from `https://192.168.1.50:9002` the origin carries `:9002` and the forwarded host did not. Every non-GET 403s and every GET succeeds: boards open, nothing can be saved, renamed, shared or deleted. That reads as a broken product, not as a missing four characters, and the websocket handshake fails separately through socket.io's CORS allowlist — one typo presenting as two unrelated bugs. Pinned from both sides: `csrfOrigin.test.ts` proves the stripped-port case 403s and the `$http_host` case passes, and `deploymentConfig.test.mjs` — a `node:test` file beside the scripts, not a vitest one — asserts nginx has exactly three `proxy_pass` blocks and exactly three `Host` proxy headers, and that all three are `$http_host`. It was two when this was written; the count is asserted rather than assumed precisely so that adding a fourth proxy block without its header fails here instead of in production. The test helper had to be written against `node:http`, because `fetch` cannot set a chosen `Host` and the existing `testApp.request` overwrites `Origin` — which is precisely how this survived a suite that already had CSRF tests.
 
 **`app.set("trust proxy", true)`.** `true` trusts the whole `X-Forwarded-For` chain and Express then reads the **left-most** entry as `req.ip` — the entry the client wrote. Every per-IP limit was therefore a bucket the caller chose, fresh on each request: decorative, not enforced. It is now a count, `LAWHA_TRUST_PROXY_HOPS`, default 1, because nginx _appends_ (`$proxy_add_x_forwarded_for`), so the last entry is an address nginx observed. There is no safe "just use `true`", and no safe universal number either: too low and a whole LAN shares one bucket, too high and you are back to trusting a client-written entry.
 
@@ -559,7 +621,7 @@ The deployment stopped being a guest on somebody else's machine, and almost ever
 
 **Two docker footguns, both turned into messages.** A _missing_ bind source is created as an empty **directory**, and `lawha.env` and `./.env` are both gitignored and genuinely absent on a fresh clone — so `mirror_config` detects a directory where a file belongs and names the host file, instead of copying nothing and reporting success. And `docker compose restart` never re-reads any of this, because a container's environment and mounts are fixed when it is _created_.
 
-**What is pinned, and where the risk actually is.** `backup.mjs` has thirteen tests of its own; what had no witness was the **wiring** — a script working perfectly that cannot see `./certs` produces a confident, useless archive. `backupCoverage.test.ts` asserts the mounts exist and are read-only, that `take_database_backup` contains no `cp`/`tar`/`rsync` (scoped to that function, since `cp` is correct for the immutable blob and config mirrors), and that `run_once` orders database → blobs → config → off-host. Each assertion was checked against a deliberately broken compose file before being trusted.
+**What is pinned, and where the risk actually is.** `backup.mjs` has thirty-six tests of its own that run everywhere, and six more that need `age` on PATH and skip without it; what had no witness was the **wiring** — a script working perfectly that cannot see `./certs` produces a confident, useless archive. `backupCoverage.test.ts` asserts the mounts exist and are read-only, that `take_database_backup` contains no `cp`/`tar`/`rsync` (scoped to that function, since `cp` is correct for the immutable blob and config mirrors), and that `run_once` orders database → blobs → config → off-host. Each assertion was checked against a deliberately broken compose file before being trusted.
 
 ### 4.22 Three of the six: copy that lied, copy that filled, and a follow button with no way back
 
@@ -592,9 +654,15 @@ The state is announced three ways because a ring is not one: `aria-pressed` on t
    > **The citation here was wrong until §4.12.** It read "and, on the client, by `lawhaIdentity.test.tsx` (**"keeps a name a pointer payload already delivered"**, which is the merge direction that could have undone it)". That test pins the _harmless_ direction — an identity arriving second must not blank a name a pointer already delivered. The direction that could have undone it, and did, is the opposite one: a pointer payload arriving second overwriting the name the server announced. Nothing pinned that until `lawhaIdentityPinning.test.tsx`. Cite the test that fails when the bug returns, not the one next to it in the file.
 
 4. **`ShareDialog.tsx` is mounted but unreferenced.** Delete it once `onExportToBackend` (the shareable-link export) has a new home in the main menu.
+
+   > **"Unreferenced" is wrong, and it is the half that would have made deleting it safe.** `App.tsx:1165` mounts it and `App.tsx:1231` opens it — the command palette's `labels.share` item sets `shareDialogState.isOpen`, which is the atom the component itself reads (`share/ShareDialog.tsx:73`). Both the main-menu item and the palette's "Live collaboration" item were removed with a comment explaining why, and this one was left; so the dialog is reachable by anyone who types "share" into the palette, and removing the file removes a working surface rather than dead weight. The rest of the entry stands: `onExportToBackend` still has no other home.
+
 5. ~~`LAWHA_REQUIRE_AUTH=false` is the default.~~ It defaults to **true** now. An unauthenticated visitor is refused rather than handed the shared `anonymous` identity. Link visitors are a separate, narrower principal — see invariant 22.
-6. ~~No Playwright.~~ `e2e/` holds a visual suite (3 viewports x 2 themes, 36 baselines) plus behavioural specs. `yarn test:visual` / `yarn test:visual:update`, and `docs/visual-regression.md`. Point `LAWHA_E2E_BASE_URL` at the https origin when the dev server runs with TLS.
+6. ~~No Playwright.~~ `e2e/` holds a visual suite (5 screens x 3 viewports x 2 themes, 30 baselines — `account`, `board-canvas`, `dashboard`, `signin`, `signup`) plus behavioural specs. It said 36 until this line was re-counted; entry 18 below had already recorded the six deleted with the `canvas-signed-out` test, and nobody carried the subtraction back here. `yarn test:visual` / `yarn test:visual:update`, and `docs/visual-regression.md`. Point `LAWHA_E2E_BASE_URL` at the https origin when the dev server runs with TLS.
 7. **Account deletion takes shared boards with it.** Ownership transfer still does not exist, so the UI says what actually happens. `board_members` has routes now, so this is finally buildable.
+
+   > **Still open after ADR 0031, and deliberately so — checked, not assumed.** The obvious reading is that admin-initiated deletion would have had to solve this; it did not. `boards.owner_id` is written at creation and reassigned nowhere in this codebase, and ADR 0031 §1 declines to add a transfer in as many words: deleting an account takes every board it owns, including boards it had shared, and those boards leave their collaborators' dashboards with no explanation. Two of the eight board-owning accounts on that deployment own such a board. **What changed is the blast radius, not the rule.** An administrator's delete is soft — `users.deleted_at` is stamped, the boards go dark by derivation rather than by being stamped themselves, and `lib/accountSweep.ts` destroys them when `LAWHA_TRASH_RETENTION_DAYS` has passed — so for thirty days a mistake is one press of Restore. `DELETE /api/auth/me`, the account holder's own delete, is **not** in that window: it calls `purgeAccount` immediately and there is nothing to restore from. Two paths, two different answers to the same question, and only one of them is reversible.
+
 8. **`GET /api/auth/me` 401s in the browser console** when signed out. Expected — "no session" is an ordinary state here, not an error — but it is noise.
 9. Port 3002 is occupied on this machine by an unrelated app, hence the gitignored `.env.development.local` pointing the dev proxy at 3007.
 10. ~~The PWA manifest still says "Excalidraw".~~ Rebranded. Icons are unchanged — there is no Lawha artwork.
@@ -616,7 +684,7 @@ The state is announced three ways because a ring is not one: `aria-pressed` on t
     **After §4.14 it is more than sixteen, and the increment was not counted.** That batch moved the editor's main-menu trigger up into the app bar's row (a CSS lift, no `packages/` edit), removed the sync pill from the footer, and let `.selected-shape-actions-container` rise by the freed 40px — all four `board-canvas-*` baselines change, and the desktop and tablet ones change in two places rather than one. Nobody re-ran the suite, for the reason above: the visual suite screenshots whatever `LAWHA_E2E_BASE_URL` names, and a baseline regenerated against a build nobody looked at is a regression blessed as the new normal. Re-baseline deliberately, with eyes on the diff, and count them then.
 
 19. ~~**`GET /api/admin/config` has no UI.**~~ It has one: `excalidraw-app/lawha/admin/LawhaServerConfigCard.tsx` renders all nine fields on `/admin`, above the account list. The master password is rendered as "Configured" / "Not set" and the field it comes from is typed `boolean` on the client, which is the client's half of the contract that a hash never crosses this wire.
-20. **Invariant 10's count is stale: `packages/` diverges in thirteen paths, not four.** Measured, not recalled — `git diff --stat $(git merge-base upstream/master main)..main -- packages/`. The invariant's own sentence already names five paths while saying "four files", so the number has never quite matched its own list. What is actually there:
+20. **Invariant 10's count is stale: `packages/` diverges in seventy-one paths, not fourteen.** Measured, not recalled — `git diff --name-status $(git merge-base upstream/master main)..main -- packages/` reports 22 added and 49 edited, and `git diff --stat` on the same range reports 11,120 insertions against 117 deletions (re-run 2026-08-26; unchanged from the 2026-08-25 measurement below). The invariant has never quite matched its own list and neither had this entry's headline, which said "thirteen, not four" while the body four paragraphs down already said seventy-one. Both are fixed now; the table below is the recorded subset, not the whole 71. What is actually there:
 
     | Path | Recorded where |
     | --- | --- |
@@ -652,7 +720,7 @@ The state is announced three ways because a ring is not one: `aria-pressed` on t
 
     Why it mattered more than tidiness: `lawha-backup` runs this same image, so a drifting transitive meant the better-sqlite3 that **writes** your backups could differ from the one that **reads** them on the day you need it to.
 
-22. ~~**The restore half of backup/restore has never been exercised.**~~ **It was worse than unexercised: the documented procedure destroyed the database.** Its step 2 was `docker volume rm excalidraw_lawha-data`, and somebody followed it. Replaced wholesale in §4.13 — the named volume is gone, the `docker volume` step is gone, and both halves are now scripts with tests (`lawha-server/scripts/backup.mjs`, `restore.mjs`, nineteen tests in `scripts/*.test.mjs`). The ownership hazard this entry used to name went with the volume: the host user and the container's `node` are both uid 1000, so there is no root-owned extraction any more.
+22. ~~**The restore half of backup/restore has never been exercised.**~~ **It was worse than unexercised: the documented procedure destroyed the database.** Its step 2 was `docker volume rm excalidraw_lawha-data`, and somebody followed it. Replaced wholesale in §4.13 — the named volume is gone, the `docker volume` step is gone, and both halves are now scripts with tests (`lawha-server/scripts/backup.mjs`, `restore.mjs`, 125 tests across four `scripts/*.test.mjs` files — measured 2026-08-26, and eighteen more run where `age` is on PATH). The ownership hazard this entry used to name went with the volume: the host user and the container's `node` are both uid 1000, so there is no root-owned extraction any more.
 
     **The restore has now been rehearsed against real data, on a copy.** `cp -a ~/lawha-data` to a scratch directory, `LAWHA_DB_PATH` pointed at the copy, newest archived backup restored into it: 11 users, 21 boards, 19 board_scenes, 10 files, **identical counts on both sides** — the drift check that would have caught a partial file passed — plus `integrity_check: ok` on the result and the `.pre-restore-<stamp>` original left in place. The live directory was untouched and the stack stayed healthy throughout. Rehearsing on the machine holding the only copy is how the rehearsal becomes the incident, so the copy is not a convenience, it is the procedure.
 
@@ -662,7 +730,7 @@ The state is announced three ways because a ring is not one: `aria-pressed` on t
 
 24. **One test in `collabBoardReopen.test.tsx` passes against the unfixed code.** "does not take a peer's empty `SCENE_INIT` for the board's scene" mounts a _single_ board, and on the first board of a page session `App.initializeScene` reads storage itself, so the old code shows the stored rectangle too. The other two tests in that describe block — the ones that open a second board — fail hard without the fix, so the bug is pinned; this one is a forward-looking assertion about the empty-INIT rule, not a witness to the defect. Either give it the two-board shape its siblings have, or leave it and know what it is. Recorded because this repository has shipped a regression test that passed both ways before, and the way that happens is nobody writing down which ones do.
 
-25. ~~**The server suite runs twice.**~~ Fixed. `lawha-server/tests/**` is excluded at the root, beside `e2e/**` and `lawha-server/scripts/**`. `yarn test:app` went from 179 files / 2589 tests to **154 / 2176** — the difference is exactly the 25 files and 413 tests that `yarn test:server` already owns, so nothing stopped being covered.
+25. ~~**The server suite runs twice.**~~ **Done, but not the way this entry used to describe it, and the description mattered because somebody would have gone looking for a path that does not exist.** It said `lawha-server/tests/**` was excluded at the root. It is not, and there is no such directory: `vitest.config.mts:97-103` excludes exactly `**/node_modules/**`, `**/dist/**`, `**/build/**`, `e2e/**` and `lawha-server/scripts/**`. What actually stopped the double run is that `yarn test:server` no longer invokes vitest at all — it is `node --test scripts/*.test.mjs` and nothing else (`lawha-server/package.json:14`). The server's seven remaining vitest files sit under `lawha-server/src/**`, are collected by the root config, and run once, inside `yarn test:app`. The before/after counts this entry quoted are stale too: `yarn test:app` reports **131 files / 2,050 passing (2,098 collected, 47 skipped, 1 todo)** as of 2026-08-26.
 
     It was left alone once before on the grounds that reducing what `yarn test:app` covers is not a thing to do quietly. It is not quiet here: the counts above are the check, and the reason to do it before it bit is that the first server test reaching for a node-only global would have failed in jsdom, in an environment it was never written for, naming the app.
 
@@ -727,8 +795,10 @@ graphify is refreshed with `graphify update`, which covers code only. Documents 
 That is not the same as needing an API key. The `/graphify` skill dispatches subagents and uses the host Claude Code session as the model; `GEMINI_API_KEY` is only the unattended alternative. So the hook keeps the code half current for free, and the doc half is refreshed by running **`/graphify --update` in a session**. Running the full `--update` from the hook would drop those nodes on every commit and shrink the graph silently.
 
 ```bash
-corepack yarn test:app --watch=false   # 154 files, 2330 passing (2378 collected, 47 skipped, 1 todo)
-corepack yarn test:server              # vitest (18 files, 298 tests), then `node --test scripts/*.test.mjs` (19)
+corepack yarn test:app --watch=false   # 131 files, 2050 passing (2098 collected, 47 skipped, 1 todo)
+corepack yarn test:server              # `node --test scripts/*.test.mjs` ALONE — 4 files, 125 tests.
+                                       # No vitest step: the server's own 7 vitest files live under
+                                       # lawha-server/src/** and run inside test:app, above.
 corepack yarn --cwd lawha-server test:scripts   # the backup/restore half alone
 corepack yarn test:typecheck
 corepack yarn test:code

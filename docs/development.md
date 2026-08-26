@@ -20,25 +20,35 @@ The Vite dev server proxies `/api` and `/socket.io` to lawha-server, so the brow
 | `yarn start:server` | Server alone |
 | `yarn lan` | Build the app, serve it from lawha-server. Use this for testing against a tunnel; modules over a tunnel are slow. |
 | `yarn test:all` | **Does NOT include** `test:server` or `test:typecheck:server`. See below. |
-| `yarn test:app` | The editor's own suite, under `packages/` — 117 files, 1788 tests |
-| `yarn test:server` | The backup and restore scripts, under `node:test` — 3 files, 110 assertions |
+| `yarn test:app` | Every vitest suite — 131 files, 2050 tests. Excalidraw's editor tests under `packages/`, and Lawha's own under `lawha-server/src/` and `excalidraw-app/lawha/`. |
+| `yarn test:server` | A different runner: `node --test scripts/*.test.mjs` in lawha-server — backup, restore, encrypt-db and the deployment-config pins, 4 files, 125 tests |
 | `yarn test:typecheck` | TypeScript over app + packages |
 | `yarn test:typecheck:server` | TypeScript `--noEmit` in lawha-server |
 | `yarn test:code` | ESLint `--max-warnings=0` |
 | `yarn test:other` | Prettier (includes markdown) |
-| `yarn test:visual` | Playwright visual regression, 3 viewports × 2 themes |
-| `yarn test:visual:update` | Regenerate visual baselines |
+| `yarn test:visual` | A bare `playwright test`, so **all 13 projects** — not just the screenshots. See [End-to-end tests](#end-to-end-tests). |
+| `yarn test:visual:update` | Regenerate visual baselines. Also bare, so also all 13 projects. |
 | `yarn fix` | Prettier `--write` then ESLint `--fix` |
 
 ### `yarn test:all` does NOT include the server gates
 
-`yarn test:all` runs typecheck, ESLint, Prettier and app tests. It excludes `yarn test:server` and `yarn test:typecheck:server`, both of which CI runs separately. Run them by hand before merging; a green `test:all` says nothing about the server.
+`yarn test:all` runs typecheck, ESLint, Prettier and `test:app`. It excludes `yarn test:server` and `yarn test:typecheck:server`, both of which CI runs separately. Run them by hand before merging.
+
+It does not leave the server untested, though it used to: `test:app` collects the seven vitest suites under `lawha-server/src/` (see below). What a green `test:all` actually leaves unrun is the server's typecheck and the four `node:test` script suites.
 
 ### What is and is not covered
 
-`test:app` runs Excalidraw's tests for the editor. `test:server` runs the backup and restore scripts — covered because a silent backup failure has already cost this project real data.
+`test:app` runs Excalidraw's editor tests **and** Lawha's own. Measured with `vitest list`, not recalled: 131 files and 2050 tests in all, of which 123 files are upstream's under `packages/`.
 
-**Lawha's own application and server code has no unit or integration suite.** Changes there are held by the typechecker, the linter and review. The Playwright suite in `e2e/` covers sign-in, boards, invites and visual regression, but CI does not run it: `playwright.config.ts` expects a dev server already listening on `localhost:3001`, which CI does not provide. Run it yourself against a running stack.
+**Lawha's own code has a vitest suite: 8 files, 103 tests.** Seven are under `lawha-server/src/` — the trash sweep (15) and the account sweep (15), `getBoardAccess` and `listForUser` owner-derivation (13), the socket permission resolver (18), the four refusals on admin account deletion (15) and the shape of those routes (4), and the boards route ordering (2). The eighth is `excalidraw-app/lawha/mermaid/index.test.ts` (21). They ship with ADRs 0029, 0030 and 0031.
+
+Several are integration tests rather than unit tests, and deliberately so: they call `openDatabase({ path: ":memory:" })`, which is a real SQLite database with every migration applied, and the two sweeps also write real file blobs into a temp directory. Every claim worth making about a cascade is a claim about the database — a stubbed repository would agree with whatever the test asserted.
+
+Lawha's editor-side features are covered under `packages/` too, by `lawhaGridObjects.test.tsx` (24) and `lawhaSvgExport.test.ts` (9).
+
+All of that runs under `yarn test:app`, not `yarn test:server`. `vitest.config.mts` excludes only `e2e/**` and `lawha-server/scripts/**`, so `lawha-server/src/**` is collected like any other source directory. `test:server` is `node --test scripts/*.test.mjs` and nothing else — backup, restore, encrypt-db and the deployment-config pins, 4 files and 125 tests. Backup and restore are covered because a silent backup failure has already cost this project real data.
+
+**Coverage stops there**, and what is left over is still most of the app and the server. There is no request-level harness here, so no route is driven over HTTP at all — the admin account-deletion handler is pulled off the router's layer stack and called directly, and `boardsRouteOrder` reads registration order off that same stack. Sharing, invites, folders and tags have no suite, and the React client has none outside the mermaid parser and the two files above. All of that is held by the typechecker, the linter and review. The Playwright suite in `e2e/` covers sign-in, boards, invites and visual regression, but CI does not run it: `playwright.config.ts` expects a dev server already listening on `localhost:3001`, which CI does not provide. Run it yourself against a running dev server.
 
 ## Migrations
 
@@ -70,7 +80,7 @@ LAWHA_DB_PATH=~/lawha-data/lawha.db \
 
 ## Docker stack
 
-The supplied `docker-compose.yml` runs on a LAN with a gateway handling TLS. It is plain HTTP inside, behind an nginx proxy.
+The supplied `docker-compose.yml` runs on a LAN with a gateway handling TLS. By default it is plain HTTP inside, behind an nginx proxy (ADR 0018); `LAWHA_TLS=on` adds an HTTPS listener to that same nginx server block (ADR 0022).
 
 ```bash
 # Prerequisites: fill in ./.env and ./lawha.env from the examples
@@ -87,21 +97,24 @@ docker compose logs lawha-server
 
 The **dev server** on :3001 and the **Docker stack** on :9002 (or your configured port) may already be running. Check before starting or stopping either.
 
-The stack publishes one host port (default 9002). Never port 80 — that belongs to the portless gateway, and taking it removes every other project's name from the network.
+The stack publishes **two** host ports: plain HTTP (default 9002) and TLS (default 9443). Both mappings are unconditional. The TLS one answers only when `LAWHA_TLS=on`; with TLS off a connection to 9443 is refused, because nothing inside is listening. It is published anyway because a conditional port does not exist in compose without a second file or a profile, and either is a place for the two halves of "TLS is on" to disagree — the cost of leaving it published is one docker-proxy socket.
+
+Never port 80 or 443 — those belong to the portless gateway, and taking either removes every other project's name from the network.
 
 ## Traps
 
 ### `window.h` and `window.collab` do not exist in a production build
 
-Both are gated on `isTestEnv() || isDevEnv()`, so any probe that reaches through them reads empty rather than failing loudly. This is why **`e2e/persistence.spec.ts` cannot be run against the Docker stack.** It only works against `yarn dev`. The visual suite has no such dependency and runs anywhere; point `LAWHA_E2E_BASE_URL` at the origin:
+Both are gated on `isTestEnv() || isDevEnv()`, so any probe that reaches through them reads empty rather than failing loudly. This is why **`e2e/persistence.spec.ts` cannot be run against the Docker stack.** It only works against `yarn dev`. The visual specs have no such dependency and render against any origin — but `yarn test:visual` is a bare `playwright test`, so it would drag `persistence.spec.ts` along with them. Filter to the screenshot projects:
 
 ```bash
-LAWHA_E2E_BASE_URL=http://localhost:9002 yarn test:visual
+LAWHA_E2E_BASE_URL=http://localhost:9002 \
+  yarn test:visual --project='*-light' --project='*-dark'
 ```
 
 ### Do not serve the dev server over a tunnel
 
-Vite hands the browser roughly 885 module requests; across a tunnel each one pays the round trip and the canvas takes most of a minute. Use `yarn lan` instead — it builds the bundle and serves it from lawha-server: 20 requests, canvas in about 250 ms. (ADR 0014 §4 is written down.)
+Vite hands the browser roughly 885 module requests; across a tunnel each one pays the round trip and the canvas takes most of a minute. Use `yarn lan` instead — it builds the bundle and serves it from lawha-server: 20 requests, canvas in about 250 ms. (Invariant 14 in `docs/lawha-roadmap.md` §2; `excalidraw-app/vite.config.mts` cites it by that name. ADR 0014 is about invite codes and says nothing about tunnels.)
 
 ### The eslint checker in the Vite dev server eats memory
 
@@ -130,13 +143,11 @@ git diff --stat $(git merge-base upstream/master main)..main -- packages/
 
 ## End-to-end tests
 
-Playwright runs against the **built** Docker stack, not the dev server. This is because `window.h` and `window.collab` are gated on `isTestEnv() || isDevEnv()` and are simply absent in a production build.
+Playwright defaults to the **dev server**, not the Docker stack: `baseURL` is `process.env.LAWHA_E2E_BASE_URL ?? "http://localhost:3001"` (`playwright.config.ts:189`), and the config deliberately has no `webServer` block, so one has to be running already. Start it with `yarn dev`.
 
-```bash
-LAWHA_E2E_BASE_URL=http://localhost:9002 yarn test:visual
-```
+`yarn test:visual` is a bare `playwright test`, which runs **every project in the list**: 13 projects, 56 tests across 8 spec files, counted with `playwright test --list`. That is `setup` and `cleanup`, the six visual projects (3 viewports × 2 themes), then `behaviour`, `grid-objects`, `open-boards`, `two-accounts` and `invite-codes`. The last five register accounts and create boards. `playwright.config.ts` comments that it puts them last, and it does — but last is not excluded, and nothing in the default run skips them.
 
-The `two-accounts` suite needs an account that already has boards (to test both converted and still-encrypted scenes):
+`two-accounts` throws in `beforeAll` unless **both** `LAWHA_E2E_OWNER` and `LAWHA_E2E_OWNER_PASSWORD` name an account that already has boards, because it asserts against both converted and still-encrypted scenes:
 
 ```bash
 LAWHA_E2E_BASE_URL=https://localhost \
@@ -145,8 +156,13 @@ LAWHA_E2E_OWNER_PASSWORD=<password> \
   yarn test:e2e:accounts
 ```
 
-Both create boards and are kept out of the default run.
+The visual specs themselves render against any origin, including the built Docker stack. `behaviour` (`e2e/persistence.spec.ts`) does not: it drives the editor through `window.h`, which a production bundle does not have (see the trap above). So when the target is the built stack, filter to the screenshot projects rather than running the suite bare:
 
-## End-to-end tests
+```bash
+LAWHA_E2E_BASE_URL=http://localhost:9002 \
+  yarn test:visual --project='*-light' --project='*-dark'
+```
 
-The suite registers accounts and creates boards on whatever `LAWHA_E2E_BASE_URL` names. Run it against a scratch server, never your deployment — [docs/e2e-sandbox.md](e2e-sandbox.md) has the two commands and the checks that prove the isolation held.
+`--project` selects one project per occurrence, so repeat the flag or use a glob; the `setup` and `cleanup` dependencies are pulled in either way. Verified on Playwright 1.61.1.
+
+Whatever `LAWHA_E2E_BASE_URL` names, the suite registers accounts and creates boards on it. Run it against a scratch server, never your deployment — [docs/e2e-sandbox.md](e2e-sandbox.md) has the two commands and the checks that prove the isolation held.

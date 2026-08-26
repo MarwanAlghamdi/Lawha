@@ -31,13 +31,16 @@ Other subcommands: `./run.sh check` (preflight only, changes nothing), `./run.sh
 
 ## What runs where
 
-This deployment is **plain HTTP behind a gateway** ([ADR 0018](adr/0018-plain-http-behind-a-gateway.md)). The gateway owns port 80 and maps names onto published ports; Lawha publishes one port in the 9001–9099 band and terminates no TLS.
+This deployment is **plain HTTP behind a gateway** ([ADR 0018](adr/0018-plain-http-behind-a-gateway.md)). The gateway owns port 80 and maps names onto published ports; Lawha publishes one plain-HTTP port in the 9001–9099 band and, by default, terminates no TLS.
+
+Since [ADR 0022](adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md) compose publishes a **second** port unconditionally, `${LAWHA_TLS_PORT:-9443}:8443` (`docker-compose.yml:425`). It refuses connections until you ask for TLS, because `docker/nginx-tls.sh` writes the `listen 8443 ssl` include only when `LAWHA_TLS` is `on`/`true`/`1` and otherwise deletes it. Publishing it while the flag is unset costs a docker-proxy socket and nothing else; the alternative, a conditional port, does not exist in compose without a second file or a profile, and both are a place for the two halves of "TLS is on" to disagree.
 
 |  |  |
 | --- | --- |
 | Published port | `LAWHA_PUBLISHED_PORT` in `./.env`, default **9002** |
-| Inside the container | nginx on 8080 |
-| Never bound | **80** (the gateway's) and **443** (nothing here does TLS) |
+| TLS port | `LAWHA_TLS_PORT` in `./.env`, default **9443** — published always, answers only when `LAWHA_TLS=on` |
+| Inside the container | nginx on 8080, plus 8443 when TLS is on |
+| Never bound | **80** (the gateway's) and **443** (in-stack TLS uses 9443 instead) |
 | From the internet | `./run.sh public` → ngrok, opt-in, off by default |
 | Health | `http://localhost:<port>/healthz` → `200 ok` |
 
@@ -61,7 +64,7 @@ An `env_file:` entry reaches the container and is invisible to compose; a `./.en
 - `LAWHA_MASTER_PASSWORD` — the admin skeleton key. `./run.sh secret` generates one. Leaving it unset is supported; it disables the mechanism.
 - `LAWHA_TRUST_PROXY_HOPS=2` — **not the default of 1.** There are two proxies in front of the server now (the gateway, then nginx). At 1, every request appears to come from nginx, so the whole network shares one rate-limit bucket and one person fumbling a password locks everyone out of sign-in.
 
-**And one you cannot change:** `LAWHA_SECURE_COOKIES` is pinned to `false` in `docker-compose.yml`, where `environment:` outranks `env_file:`. That is correct and load-bearing — `Secure` means HTTPS-only, and on a plain-http origin the browser accepts the cookie, never stores it, and signs everyone out for ever with nothing in any log.
+**And one you cannot change:** `LAWHA_SECURE_COOKIES` is pinned to `auto` in `docker-compose.yml:141`, where `environment:` outranks `env_file:` — so setting it in `lawha.env` does nothing at all, silently. The pin is correct and load-bearing. `auto` resolves per request from `req.secure`: it withholds `Secure` on a plain-http request, where the browser would accept the cookie, never store it, and sign everyone out for ever with nothing in any log, and sets it on an https one. It was pinned to `false` until [ADR 0022](adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md) made the setting three-valued; `false` gave http requests exactly what `auto` gives them and left every https request unflagged as well.
 
 ## What is degraded on plain HTTP
 
@@ -78,10 +81,10 @@ ADR 0018 has the measurements.
 ## What the device needs
 
 - Docker with the Compose plugin.
-- One free port in 9001–9099.
+- One free port in 9001–9099, and `LAWHA_TLS_PORT` (default 9443) free as well — compose publishes it whether or not TLS is on.
 - uid 1000 for the user running the stack, or `run.sh` will tell you the `chown` to run.
 
-That is the whole list. **No `avahi-daemon`, no hostname change, no free port 80 or 443, and no certificates** — the gateway does the naming and Lawha never binds a privileged port. If you are looking for those steps, they were here until [ADR 0018](adr/0018-plain-http-behind-a-gateway.md) and they are in [ADR 0005](adr/0005-docker-and-tls.md), which is still correct about the deployment it describes.
+That is the whole list. **No `avahi-daemon`, no hostname change, no free port 80 or 443, and no certificates** — the gateway does the naming and Lawha never binds a privileged port. Certificates are opt-in and stay opt-in ([ADR 0022](adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md)): `./run.sh tls` mints them only when you ask, and nothing needs them until you set `LAWHA_TLS=on`. If you are looking for those steps, they were here until [ADR 0018](adr/0018-plain-http-behind-a-gateway.md) and they are in [ADR 0005](adr/0005-docker-and-tls.md), which is still correct about the deployment it describes.
 
 ## What `run.sh` does, in order
 
@@ -89,7 +92,7 @@ Worth knowing because it is also the troubleshooting order.
 
 1. **Checks Docker** is installed, has the Compose plugin, and is reachable by this user. "Installed but not running" and "you are not in the `docker` group" are different failures and it says which.
 2. **Creates `./.env` and `./lawha.env`** from the examples if missing, then stops so you can fill them in. It never invents a secret.
-3. **Validates the port** — refuses 80, refuses 443, refuses 32768 and above, warns outside 9001–9099, and refuses if something else already holds it.
+3. **Validates the port** — refuses 80, refuses 443, refuses 32768 and above, warns outside 9001–9099, and refuses if something else already holds it. `LAWHA_PUBLISHED_PORT` only: the preflight (`run.sh:341-368`) never reads `LAWHA_TLS_PORT`, so a collision on 9443 gets past it and surfaces as compose's "port is already allocated".
 4. **Creates the data directories** — `~/lawha-data` and `~/lawha-backups`, `chmod 700` on the second because it holds the config mirror, which holds the master password. Docker would otherwise create them as `root:root` on first `up` and the unprivileged container could not open them.
 5. **Builds and starts**, then polls health rather than sleeping a fixed time — the first boot runs migrations and is genuinely slower than the second.
 6. **Reports the URL** and, on a fresh database, the first-boot administrator password, which is printed once and is not recoverable afterwards.
@@ -109,7 +112,7 @@ sudo portless service install --lan --no-tls
 
 `--lan` binds `0.0.0.0` and `::` and advertises `<name>.local` over mDNS. Without it the proxy listens on loopback only and the name works on this machine and nowhere else.
 
-`--no-tls` puts the proxy on **port 80, plain HTTP**. Without it portless terminates TLS on 443 with a CA it generated locally — which is trusted on the machine that made it and on no other device, so every colleague gets a certificate warning. That is the same trade Lawha's own `gen-certs.sh` used to make, and it is the reason this deployment is plain HTTP (ADR 0018).
+`--no-tls` puts the proxy on **port 80, plain HTTP**. Without it portless terminates TLS on 443 with a CA it generated locally — which is trusted on the machine that made it and on no other device, so every colleague gets a certificate warning. That is the reason this deployment is plain HTTP (ADR 0018). `scripts/gen-certs.sh` is still in the repo and still makes the same trade when `./run.sh tls` calls it — the difference is that it mints a CA and nginx serves it at `/lawha-ca.pem`, so the trust can be installed once instead of clicked past on every visit ([ADR 0022](adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md)).
 
 `sudo` is for port 80. Without a terminal able to answer the prompt, portless falls back to port 1355 and the clean URL — the entire point — is the one thing it does not deliver.
 
@@ -150,14 +153,17 @@ Either way the cost is the same and it is the part that decides whether this wor
 
 ### Running more than one Lawha on this machine
 
-Set three things in `./.env` — `LAWHA_STACK`, `LAWHA_DATA_DIR` and `LAWHA_BACKUP_DIR` — plus a different `LAWHA_PUBLISHED_PORT`. The stack name becomes the container-name prefix and the Compose project, so the two deployments cannot collide at the Docker daemon.
+Set three things in `./.env` — `LAWHA_STACK`, `LAWHA_DATA_DIR` and `LAWHA_BACKUP_DIR` — plus a different `LAWHA_PUBLISHED_PORT` **and a different `LAWHA_TLS_PORT`**. The stack name becomes the container-name prefix and the Compose project, so the two deployments cannot collide at the Docker daemon.
 
 ```bash
 LAWHA_STACK=lawha2
 LAWHA_DATA_DIR=~/lawha-data-lawha2
 LAWHA_BACKUP_DIR=~/lawha-backups-lawha2
 LAWHA_PUBLISHED_PORT=9003
+LAWHA_TLS_PORT=9444
 ```
+
+`LAWHA_TLS_PORT` belongs on that list even if neither stack uses TLS, because compose publishes it unconditionally: leave it at the default and both stacks bind host 9443, and the second dies at `up` with "port is already allocated". `run.sh` does not catch this one — its port preflight reads `LAWHA_PUBLISHED_PORT` and nothing else.
 
 `./run.sh` **refuses to start** if `LAWHA_STACK` is set and the directories are not. That is not tidiness: two stacks bind-mounting one `~/lawha-data` is two servers with two WAL connections onto one `lawha.db`, which neither SQLite nor Docker refuses, and which presents as boards disappearing from whichever dashboard you are not looking at.
 
@@ -207,7 +213,7 @@ internet: browser -> ngrok    -> lawha-app -> lawha-server   (2 hops)
 
 ### The three settings that make dual access work
 
-**`LAWHA_SECURE_COOKIES=false`** — and it must stay false, even though the ngrok URL is https. `Secure` means HTTPS-only, so a Secure cookie works over ngrok and silently breaks sign-in on `http://lawha.local`. False is the only value that serves both. The cost is that the session cookie is not flagged Secure over the tunnel; in practice ngrok endpoints are https-only, so it is still encrypted end to end.
+**`LAWHA_SECURE_COOKIES=auto`** — the pinned value, and the one that serves both origins. It decides per request from `req.secure`: no `Secure` on `http://lawha.local`, `Secure` over the ngrok tunnel ([ADR 0022](adr/0022-optional-tls-and-a-cookie-that-follows-the-scheme.md), measured). This paragraph used to say `false`, and used to say it had to stay false — true while the setting was a boolean, because one boolean cannot serve a plain-http LAN origin and an https tunnel at the same time. The LAN won, and the cost was that the session cookie crossed the tunnel unflagged: anyone able to watch that wire got a full account takeover with no password to crack and nothing in the audit log, which records the account and not the transport. `auto` removes that cost and changes nothing an http request sees. Set `false` explicitly only if a proxy in front of you reports the scheme wrongly.
 
 **`LAWHA_TRUST_PROXY_HOPS=2`** — see above.
 
@@ -223,7 +229,7 @@ To close it: `LAWHA_ALLOW_OPEN_REGISTRATION=false` in `lawha.env`, then create a
 
 | Symptom | Cause |
 | --- | --- |
-| Sign-in works, then every page is signed out | A `Secure` cookie on a plain-http origin. `LAWHA_SECURE_COOKIES` must be `false` — it is pinned in `docker-compose.yml`, so check nothing overrode it there. |
+| Sign-in works, then every page is signed out | A `Secure` cookie on a plain-http origin. `LAWHA_SECURE_COOKIES` is pinned to `auto` in `docker-compose.yml`, which already withholds `Secure` on plain http — so check nothing changed it to `true` there, then check `LAWHA_TRUST_PROXY_HOPS` and whether something upstream is sending `X-Forwarded-Proto: https` over plain http. `/api/admin/config` reports `secureCookiesEffective` for the request you made. |
 | Boards open, nothing can be saved or renamed | The CSRF check: the `Origin` host and the `Host` header disagree. The gateway is rewriting `Host`. Set `LAWHA_ORIGIN` in `lawha.env` to the address people actually type. |
 | One person's bad password locks out the LAN | `LAWHA_TRUST_PROXY_HOPS` is 1. There are two proxies now — the gateway, then nginx. Set it to `2`. |
 | Websocket dead, REST fine | Same Host/Origin mismatch as above, judged by the relay instead of the CSRF middleware. Same fix. |
@@ -231,7 +237,7 @@ To close it: `LAWHA_ALLOW_OPEN_REGISTRATION=false` in `lawha.env`, then create a
 | The same image appears twice | Expected on plain HTTP. Image ids fall back to random when `crypto.subtle` is absent. ADR 0018. |
 | Public URL 404s or shows "endpoint offline" | The tunnel is not up. `docker compose logs ngrok`. Most often the domain in `NGROK_DOMAIN` is not the one assigned to the account the authtoken belongs to. |
 | Public URL worked, now dead | Free-plan ceiling: 1 GB transfer or 20k requests a month. Check dashboard.ngrok.com before debugging Lawha. |
-| Works over ngrok, signed out on `lawha.local` | `LAWHA_SECURE_COOKIES` was set to `true`. A Secure cookie is never stored on a plain-http origin. It must stay `false` for dual access. |
+| Works over ngrok, signed out on `lawha.local` | `LAWHA_SECURE_COOKIES` was set to `true`. A Secure cookie is never stored on a plain-http origin. Return it to `auto`, which is the value that serves both origins. |
 | Colleagues see an ngrok warning page first | Expected on the free plan. Removed on Hobbyist (~$8–10/mo). |
 
 ## Moving an existing deployment to this device
@@ -270,7 +276,7 @@ The tar is safe to extract with ordinary `tar` even though the warning below say
 
 Whichever route you take, `lawha.env` carries `LAWHA_MASTER_PASSWORD`, and the downloaded archive carries every password hash and session on the old box. Move both the way you would move the machine itself, and delete the copy you moved them with afterwards.
 
-**Do not copy `certs/` or the old `./.env`.** Nothing terminates TLS any more, so the certificates are dead weight that names the old machine, and `./.env` carries that machine's port and paths. Start from `.env.example` on the new box — `run.sh` copies it for you.
+**Do not copy `certs/` or the old `./.env`.** `./.env` carries the old machine's ports and paths. `certs/` is a stronger reason: it holds the CA **private key**, which can mint a certificate for any name every device trusting it will accept (`scripts/gen-certs.sh:18-21`), so it travels like the master password rather than like a config file. If you want the in-stack TLS listener on the new box, mint fresh material there with `./run.sh tls` and install the new `certs/lawha-ca.pem` on each device once — the leaf is reissued as often as you like afterwards, the CA is not. Start from `.env.example` on the new box — `run.sh` copies it for you.
 
 ## Running the end-to-end suites
 

@@ -1,14 +1,22 @@
 # The gates, run on GitHub.
 #
-# This replaces twelve workflows inherited from upstream Excalidraw. Most of
+# This replaces eleven workflows inherited from upstream Excalidraw. Most of
 # them referenced secrets that do not exist on a fork and would have failed on
 # every push; two of them were worse than noise — `publish-docker.yml` pushed
 # `excalidraw/excalidraw:latest` to Docker Hub and `autorelease-excalidraw.yml`
 # npm-published `@excalidraw/*`, both triggered by a branch named `release`.
 # Neither belongs to this repository.
 #
-# The gate set below must be run locally before pushing. Note that `yarn test:all` is NOT used: it omits `test:server` and
-# `test:typecheck:server`, so a green `test:all` says nothing about the server.
+# The gate set below must be run locally before pushing. `yarn test:all` is
+# NOT used, because it omits `test:server` and `test:typecheck:server` — so a
+# green `test:all` leaves the server's typecheck and its four node:test script
+# suites unrun.
+#
+# It does NOT leave the server untested. `vitest.config.mts` excludes only
+# `lawha-server/scripts/**`, so the seven suites under `lawha-server/src/` are
+# collected by `test:app` in the step below. That sentence used to say a green
+# `test:all` "says nothing about the server", which was true when written and
+# stopped being true the day those suites were added.
 # The two jobs run in parallel and the split is by failure attribution — a
 # formatting failure and a broken relay should not look alike in the checks
 # list.
@@ -70,11 +78,12 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
-      - name: App and packages
+      - name: App, packages and the server's own suites
         run: yarn test:app --watch=false
 
-      # `vitest run` followed by `node --test scripts/*.test.mjs` — the backup
-      # and restore scripts are covered by node:test, which vitest does not
-      # collect, so this one script runs two different runners.
+      # `node --test scripts/*.test.mjs` — the backup, restore, encrypt-db and
+      # deployment-config scripts are covered by node:test, which vitest does
+      # not collect. lawha-server's vitest suites under `src/` are collected by
+      # `test:app` in the step above.
       - name: lawha-server
         run: yarn test:server

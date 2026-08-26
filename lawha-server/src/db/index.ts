@@ -259,10 +259,15 @@ export const openDatabase = ({
     // encrypted database stops opening, and the operator is told
     // "LAWHA_DB_KEY does not decrypt this database".
     //
-    // It fails loudly now: `dbEncryption.test.ts` reads the file back through
-    // a raw handle with an explicit `cipher=sqlcipher`, and separately proves
-    // the file is NOT the default cipher. Swapping these lines fails both.
-    // Every other test in that file stays green, which is why those two exist.
+    // It fails loudly now: `scripts/encrypt-db.test.mjs` (with the helpers in
+    // `scripts/testSupport.mjs`, whose own comment at :65 states this ordering)
+    // reads the file back through a raw handle with an explicit
+    // `cipher=sqlcipher`. Swapping these two lines fails it. Every other test
+    // there stays green, which is why that one exists.
+    //
+    // The file named here was `dbEncryption.test.ts`, which does not exist in
+    // this repository and may never have. A DO-NOT-REORDER comment pointing at
+    // a test nobody can find is an invitation to reorder it.
     db.pragma("cipher=sqlcipher");
     db.pragma(keyPragma(key));
   }

@@ -232,7 +232,10 @@ export const registerRoomHandlers = (
     (roomId: unknown, encryptedData: ArrayBuffer, iv: Uint8Array) => {
       if (typeof roomId !== "string" || !socket.rooms.has(roomId)) {
         // Upstream excalidraw-room omits this check, which lets any connected
-        // client inject undecryptable ciphertext into any guessable room.
+        // client inject a payload into any guessable room id. That used to be
+        // described as "undecryptable ciphertext", which understated it: since
+        // ADR 0012 the relay carries plaintext, so an unchecked write is not
+        // noise the room ignores — it is elements that appear on the board.
         return;
       }
       // A viewer's scene updates are dropped here, and only here: the volatile

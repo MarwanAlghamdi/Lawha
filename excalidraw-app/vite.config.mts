@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import svgrPlugin from "vite-plugin-svgr";
@@ -8,6 +9,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import checker from "vite-plugin-checker";
 import { createHtmlPlugin } from "vite-plugin-html";
 import Sitemap from "vite-plugin-sitemap";
+
 import { woff2BrowserPlugin } from "../scripts/woff2/woff2-vite-plugins";
 export default defineConfig(({ mode }) => {
   // To load .env variables.
@@ -20,14 +22,24 @@ export default defineConfig(({ mode }) => {
       port: Number(envVars.VITE_APP_PORT || 3000),
       // open the browser
       open: true,
-      // TLS, when a certificate is supplied. Not a nicety: every board key is
-      // minted with `window.crypto.subtle`, which browsers expose only in a
-      // secure context. `localhost` counts as one, a LAN address does not — so
-      // over plain HTTP on 192.168.x.x the Web Crypto API is simply undefined
-      // and creating a board fails outright. Any LAN or tailnet testing needs
-      // this set. Paths are used as given, so absolute ones are safest — a
-      // relative path resolves against the Vite root (`excalidraw-app/`), not
-      // the repo root. See LAWHA_HTTPS_* in the README.
+      // TLS, when a certificate is supplied.
+      //
+      // This comment used to say a LAN address without it made board creation
+      // "fail outright", because every board key was minted with
+      // `window.crypto.subtle`. There are no board keys since ADR 0012, and
+      // ADR 0018 retired the invariant that claim came from — its title is
+      // "the end of invariant 18". `generateBoardId` uses
+      // `crypto.getRandomValues`, which is not secure-context-gated, so a
+      // board is created fine over plain http.
+      //
+      // What a LAN address without TLS actually costs is measured in ADR 0018:
+      // image ids stop being content hashes (`generateIdFromFile` already
+      // falls back to `nanoid(40)`), two clipboard buttons stop working, and
+      // boards written before ADR 0012 cannot be decrypted. Worth setting for
+      // LAN or tailnet testing; not a prerequisite.
+      //
+      // Paths are used as given, so absolute ones are safest — a relative path
+      // resolves against the Vite root (`excalidraw-app/`), not the repo root.
       https:
         envVars.LAWHA_HTTPS_KEY && envVars.LAWHA_HTTPS_CERT
           ? {
