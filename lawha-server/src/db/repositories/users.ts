@@ -36,6 +36,20 @@ export interface UserRow {
    * in one layer is not enforced (invariant 21).
    */
   disabled_at: number | null;
+  /**
+   * When an administrator deleted this account, or null (ADR 0031).
+   *
+   * Separate from `disabled_at`, and both can be set. An account turned off in
+   * March and deleted in April is a real sequence, and restoring the deletion
+   * must not quietly turn it back on — which one status column could not have
+   * expressed and one flag would have hidden.
+   *
+   * The account's boards go dark with it, without anything being written to
+   * `boards`: `BoardsRepository.getBoardAccess` reads this column alongside the
+   * board's own `deleted_at`. See migration 021 for why deriving beats
+   * stamping.
+   */
+  deleted_at: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -46,9 +60,22 @@ export interface UserRow {
  * One predicate rather than three `disabled_at === null` comparisons, so the
  * three enforcement points cannot drift apart — which is the specific way a
  * rule ends up enforced in one layer and not the others.
+ *
+ * **Widened by ADR 0031 rather than joined by a fourth check.** A deleted
+ * account is refused at login, at session resolution and at the socket
+ * handshake — the same three points migration 016 established for
+ * `disabled_at` — because adding a parallel `deleted_at` comparison beside
+ * each of them would have recreated, deliberately, the drift this function
+ * exists to prevent.
+ *
+ * That a deleted account cannot sign in is a decision, not a side effect. It
+ * could hold a session, and the session would resolve — but
+ * `resolveBoardPermission` denies on the owner's deletion before it ever
+ * compares owner ids, so what they would reach is their own dashboard with
+ * every board missing. A locked door explains itself; an empty room does not.
  */
 export const isAccountActive = (row: UserRow): boolean =>
-  row.disabled_at === null;
+  row.disabled_at === null && row.deleted_at === null;
 
 /** The user shape safe to send to a client. Note the absence of any email. */
 export interface PublicUser {
@@ -79,6 +106,18 @@ export interface PublicUser {
   avatarOnCursor: boolean;
   /** When the account was stopped, or null while active (migration 016). */
   disabledAt: number | null;
+  /**
+   * When an administrator deleted it, or null (ADR 0031).
+   *
+   * Present-and-null rather than absent, like `avatarId` and for the same
+   * reason: the admin panel has to tell a deleted row from an active one to
+   * offer Restore instead of Delete, and a client inferring that from a
+   * missing field infers the wrong one.
+   *
+   * Only ever non-null in the administration list. Everywhere else this shape
+   * describes a signed-in account, and a deleted account cannot sign in.
+   */
+  deletedAt: number | null;
   createdAt: number;
 }
 
@@ -91,6 +130,7 @@ export const toPublicUser = (row: UserRow): PublicUser => ({
   avatarId: row.avatar_id,
   avatarOnCursor: row.avatar_on_cursor === 1,
   disabledAt: row.disabled_at,
+  deletedAt: row.deleted_at,
   createdAt: row.created_at,
 });
 
@@ -149,11 +189,27 @@ export class UsersRepository {
    * leaves a server whose administration panel nobody can open, and
    * `countAdmins` would happily report 1 for an account that cannot log in.
    */
+  /**
+   * Administrators who could actually sign in right now.
+   *
+   * The guard against demoting or disabling the last one counts this, so it
+   * has to mean "could take over if you locked yourself out" rather than
+   * "has the flag set". A disabled administrator is not an administrator —
+   * and by the same argument, neither is a deleted one (ADR 0031).
+   *
+   * `deleted_at` reachable here at all is a narrow path: the delete route
+   * refuses an administrator outright, so it takes demote → delete →
+   * promote. It is still reachable, and a last-administrator guard satisfied
+   * by an account nobody can sign into is the guard failing silently.
+   */
   countActiveAdmins(): number {
     return (
       this.db
         .prepare(
-          "SELECT COUNT(*) AS n FROM users WHERE is_admin = 1 AND disabled_at IS NULL",
+          `SELECT COUNT(*) AS n FROM users
+            WHERE is_admin = 1
+              AND disabled_at IS NULL
+              AND deleted_at IS NULL`,
         )
         .get() as { n: number }
     ).n;
@@ -257,6 +313,7 @@ export class UsersRepository {
       // here so the literal still satisfies `UserRow` and so a reader sees that
       // a new account is active rather than having to infer it from an absence.
       disabled_at: null,
+      deleted_at: null,
       created_at: now,
       updated_at: now,
     };
@@ -326,6 +383,44 @@ export class UsersRepository {
       .prepare("UPDATE users SET disabled_at = ?, updated_at = ? WHERE id = ?")
       .run(disabled ? Date.now() : null, Date.now(), userId);
     return this.findById(userId);
+  }
+
+  /**
+   * Deletes an account, or takes it back out of the trash (ADR 0031).
+   *
+   * The soft half. Nothing is removed here — the row stays, its boards stay,
+   * and `accountSweep` is what eventually destroys both. What changes is that
+   * `isAccountActive` starts refusing the account's sessions and
+   * `BoardsRepository.getBoardAccess` starts refusing its boards to everyone,
+   * including the people it shared them with.
+   *
+   * **`disabled_at` is not touched, in either direction.** Restoring a deleted
+   * account must not re-enable one that an administrator had separately turned
+   * off; the two timestamps are orthogonal and "restore everything" is the
+   * intuitive, wrong instinct. `lib/accountSweep.test.ts` pins it.
+   *
+   * Revoking sessions is the caller's job, exactly as it is for `setDisabled`
+   * and for the same reason.
+   */
+  setDeleted(userId: string, deleted: boolean): UserRow | null {
+    this.db
+      .prepare("UPDATE users SET deleted_at = ?, updated_at = ? WHERE id = ?")
+      .run(deleted ? Date.now() : null, Date.now(), userId);
+    return this.findById(userId);
+  }
+
+  /** Accounts whose retention window has closed. See `lib/accountSweep.ts`. */
+  findExpiredDeleted(deletedBefore: number): string[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT id FROM users
+            WHERE deleted_at IS NOT NULL
+              AND deleted_at < ?
+            ORDER BY deleted_at ASC`,
+        )
+        .all(deletedBefore) as { id: string }[]
+    ).map((row) => row.id);
   }
 
   updatePassword(userId: string, passwordHash: string): void {

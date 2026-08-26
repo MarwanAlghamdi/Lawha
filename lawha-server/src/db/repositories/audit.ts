@@ -64,6 +64,18 @@ export type AuditAction =
   | "account.disabled"
   | "account.enabled"
   /**
+   * An administrator deleted an account, or took it back out of the trash
+   * (ADR 0031).
+   *
+   * The row outlives its subject, and that is the whole point of this table
+   * having no foreign key on `target_user_id` (migration 016): thirty days
+   * after `account.deleted` the sweep removes the user row, and this entry —
+   * carrying `target_label`, denormalised at write time — becomes the only
+   * remaining record that the account ever existed or who removed it.
+   */
+  | "account.deleted"
+  | "account.restored"
+  /**
    * A backup left the server. Recorded when the bytes start moving, not when
    * the password was accepted: a ticket that is issued and never redeemed is
    * somebody who changed their mind, and the log is a record of what happened

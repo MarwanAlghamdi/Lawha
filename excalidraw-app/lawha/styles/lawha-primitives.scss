@@ -128,6 +128,15 @@
   color: var(--lw-accent-d);
 }
 
+// Beside its siblings rather than in `admin/LawhaAdmin.scss` where its only
+// user lives. A variant declared away from its base is one import-order change
+// from losing to it — the same single-class tie invariant 12 describes — and
+// the next person looking for the chip colours would find three of four here.
+.lw-chip--danger {
+  background: var(--lw-danger-bg);
+  color: var(--lw-danger);
+}
+
 .lw-dot {
   width: 7px;
   height: 7px;

@@ -153,3 +153,8 @@ docs/agents/
 # knowledge base lives in a vault one directory up, not in the repo.
 .obsidian/
 *.base
+
+# Leftovers from mutation-testing a script: a copy of the original with one
+# operator flipped, named after the run. They are disposable by construction
+# and a stray one was committed once by a broad `git add`.
+**/.*.mutant-*.mjs

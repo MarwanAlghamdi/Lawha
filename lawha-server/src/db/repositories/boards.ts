@@ -157,16 +157,52 @@ export class BoardsRepository {
     return this.findById(id)!;
   }
 
+  /**
+   * The dashboard's board list.
+   *
+   * **The owner join is not decoration.** This query does not go through
+   * `getBoardAccess`, so it learns nothing from the choke point that guards
+   * every other board operation — and that is precisely the shape invariant 21
+   * warns about. Without `o.deleted_at IS NULL`, a board owned by a deleted
+   * account keeps appearing on its *members'* dashboards for the whole
+   * retention window: a card with a thumbnail and a name that answers 403 the
+   * moment it is opened, because the permission layer is correctly refusing
+   * what this list is incorrectly offering. Nothing throws. It simply looks
+   * like the board is broken rather than gone.
+   *
+   * `boards.accessByOwner.test.ts` asserts this as its own named case, apart
+   * from the
+   * `getBoardAccess` tests, because a fix to the resolver does not touch this
+   * line and a test of the resolver would not notice.
+   */
   listForUser(userId: string): BoardRow[] {
     return this.db
       .prepare(
         `SELECT DISTINCT b.* FROM boards b
          LEFT JOIN board_members m ON m.board_id = b.id
+         JOIN users o ON o.id = b.owner_id
          WHERE (b.owner_id = ? OR m.user_id = ?)
            AND b.deleted_at IS NULL
+           AND o.deleted_at IS NULL
          ORDER BY b.updated_at DESC`,
       )
       .all(userId, userId) as BoardRow[];
+  }
+
+  /**
+   * Ids of the boards this account owns, live ones and trashed ones alike.
+   *
+   * Wanted by the admin delete route, which has to evict whoever is sitting in
+   * those rooms right now. It includes already-trashed boards deliberately:
+   * nobody should be in one, and "should be" is an assumption about the relay
+   * rather than a fact from it.
+   */
+  idsOwnedBy(userId: string): string[] {
+    return (
+      this.db
+        .prepare("SELECT id FROM boards WHERE owner_id = ?")
+        .all(userId) as { id: string }[]
+    ).map((row) => row.id);
   }
 
   rename(boardId: string, name: string): void {
@@ -405,10 +441,38 @@ export class BoardsRepository {
 
   // --- authz surface -------------------------------------------------------
 
+  /**
+   * The board's access facts, as `resolveBoardPermission` needs them.
+   *
+   * **This is the choke point, and it is why deleting an account works at
+   * all.** `createResolveBoardPermission` is built from this and nothing else,
+   * and `ctx.resolveBoardPermission` / `ctx.canAccessBoard` are built from
+   * that — so every place a board is guarded (the scene read and write, the
+   * members and invites routes, file upload and download, duplicate, and
+   * `join-room` on the relay) asks this question through here. Widening the
+   * answer here widens it everywhere at once, which is the opposite of the
+   * problem invariant 21 describes.
+   *
+   * `deletedAt` is therefore **the later of two facts**: the board's own
+   * deletion, and its owner's (ADR 0031). A deleted account's boards are
+   * refused to everyone, including the people it shared them with, without a
+   * single row in `boards` being written — see migration 021 for why deriving
+   * beats stamping.
+   *
+   * A LEFT JOIN, not an inner one. An inner join would return no row at all if
+   * the owner were missing, which this method reports as "no such board" — and
+   * "the owner row has gone" is exactly the state a half-finished purge leaves
+   * behind. Answering "denied" there is right; answering "does not exist" hands
+   * the id back to the routes that create a board at an unclaimed id.
+   */
   getBoardAccess(boardId: string): BoardAccessRecord | null {
     const row = this.db
       .prepare(
-        "SELECT owner_id, link_access, guest_edit, deleted_at FROM boards WHERE id = ?",
+        `SELECT b.owner_id, b.link_access, b.guest_edit, b.deleted_at,
+                o.deleted_at AS owner_deleted_at, o.id AS owner_row_id
+           FROM boards b
+           LEFT JOIN users o ON o.id = b.owner_id
+          WHERE b.id = ?`,
       )
       .get(boardId) as
       | {
@@ -416,17 +480,29 @@ export class BoardsRepository {
           link_access: LinkAccess;
           guest_edit: number;
           deleted_at: number | null;
+          owner_deleted_at: number | null;
+          owner_row_id: string | null;
         }
       | undefined;
 
-    return row
-      ? {
-          ownerId: row.owner_id,
-          linkAccess: row.link_access,
-          guestEdit: row.guest_edit === 1,
-          deletedAt: row.deleted_at,
-        }
-      : null;
+    if (!row) {
+      return null;
+    }
+
+    // An owner row that does not exist is treated as deleted rather than as
+    // absent, for the reason in the comment above.
+    const ownerDeletedAt = row.owner_row_id === null ? 0 : row.owner_deleted_at;
+
+    return {
+      ownerId: row.owner_id,
+      linkAccess: row.link_access,
+      guestEdit: row.guest_edit === 1,
+      // The board's own deletion wins when both are set, so the number a
+      // caller reads is the one that happened first — but nothing downstream
+      // reads it as a date. `resolveBoardPermission` only asks whether it is
+      // null, which is the whole contract.
+      deletedAt: row.deleted_at ?? ownerDeletedAt,
+    };
   }
 
   getMemberRole(boardId: string, userId: string): BoardRole | null {
