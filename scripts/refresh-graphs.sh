@@ -16,13 +16,20 @@
 #     "FTS index 'file_fts' is inconsistent", each time leaving a quarantined
 #     missing-shadow WAL sidecar behind, and concurrent writers are the likeliest
 #     cause. The lock below is the point of the whole script.
-#  3. SKIP THE STORMS. A 20-commit rebase fires post-commit 20 times. Mid-rebase,
-#     mid-merge and mid-cherry-pick states are detected and skipped; the commit
-#     that ends them re-indexes once.
+#  3. SKIP THE STORMS. A 20-commit rebase fires post-commit 20 times, so a
+#     rebase in progress is skipped — `post-rewrite` fires once at the end and
+#     picks it up. A merge or a cherry-pick produces exactly ONE commit and is
+#     NOT skipped; skipping those was a bug, and it meant every merge to main
+#     left the index a commit behind.
 #  4. NEVER FAIL. A housekeeping script that returns non-zero from a git hook is
 #     a scary message after a successful commit. Every path exits 0.
 #
-# Run it by hand any time: `scripts/refresh-graphs.sh --now`
+# Four hooks call this, because no single one covers every way the tree moves:
+# `post-commit` (a commit), `post-merge` (git merge does NOT fire post-commit),
+# `post-checkout` (a branch switch changes everything), and `post-rewrite`
+# (amend, and the end of a rebase). The lock makes overlapping triggers safe.
+#
+# Run it by hand any time: `scripts/refresh-graphs.sh`
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,7 +40,10 @@ log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/nu
 
 # --- 3. mid-operation? leave it alone -------------------------------------
 git_dir="$(git -C "$REPO" rev-parse --git-dir 2>/dev/null || echo "$REPO/.git")"
-for state in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD BISECT_LOG; do
+# Only the states that produce a *burst* of commits. MERGE_HEAD and
+# CHERRY_PICK_HEAD deliberately absent: one commit each, and they are exactly
+# the moments the tree changes most.
+for state in rebase-merge rebase-apply BISECT_LOG; do
   if [ -e "$git_dir/$state" ]; then
     log "skipped: $state in progress"
     exit 0

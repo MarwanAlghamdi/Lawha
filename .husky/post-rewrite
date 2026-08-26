@@ -1,0 +1,6 @@
+#!/bin/sh
+# See .husky/post-commit. `git merge` and `git rebase` do not fire
+# post-commit, so the graphs would sit a commit behind after every merge to
+# main and after every rebase — which are the two moments the tree moves most.
+[ -x "$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" ] || exit 0
+"$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" || true

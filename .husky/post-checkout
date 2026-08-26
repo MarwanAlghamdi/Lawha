@@ -1,0 +1,12 @@
+#!/bin/sh
+# A branch switch replaces the whole tree, so the graphs are stale the instant
+# it completes — the single largest source of drift, and the one no commit hook
+# can see.
+#
+# $3 is 1 for a branch checkout and 0 for a file checkout (`git checkout -- x`),
+# which changes nothing worth re-indexing. $1 and $2 are the old and new HEAD;
+# equal means the branch did not actually move.
+[ "$3" = "1" ] || exit 0
+[ "$1" != "$2" ] || exit 0
+[ -x "$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" ] || exit 0
+"$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" || true
