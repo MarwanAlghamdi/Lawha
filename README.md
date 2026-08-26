@@ -105,6 +105,12 @@ See [ADR 0030](docs/adr/0030-tensors-at-any-rank.md).
 
 ![The admin panel: accounts with reset and lock actions, and what the server is actually doing](docs/screenshots/admin.png)
 
+**An account can be removed, and removal waits.** Deleting an account takes every board it owns with it, so it goes into the same thirty-day window a deleted board does — restorable from the same row it disappeared from. An administrator is refused their own account and anyone who is still an administrator, and the confirmation asks for the account's username typed back, which the server checks rather than trusts.
+
+![The admin panel mid-delete: one account showing a "deleted" chip and a single Restore action, one being confirmed with its username typed into the confirm strip, and the administrator's own row with Revoke admin, Turn off and Delete all disabled](docs/screenshots/admin-delete-account.png)
+
+Turning an account off is still the reversible answer and stays one click away. See [ADR 0031](docs/adr/0031-an-administrator-can-delete-an-account.md).
+
 Regenerate these with `scripts/demo-screenshots.mjs` — it refuses to run against a real deployment, because it leaves accounts and boards behind.
 
 ## Documentation

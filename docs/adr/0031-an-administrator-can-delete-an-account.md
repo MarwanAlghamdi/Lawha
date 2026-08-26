@@ -75,6 +75,8 @@ This was found in review, and so was the reason it survived the first round of t
 
 **Refuse to delete an account that owns shared boards.** Safe, and it leaves an administrator with no in-app way to finish the job they came to do.
 
+**A JSX adapter between the row and the container.** `onAction={(action, target) => void onAction(action, target)}` existed to discard a promise, and a two-parameter function is assignable to a three-parameter type — so it type-checked and threw the typed username away on every delete, sending `{"username":""}`. Neither `tsc` nor any test found it; driving the real panel did. The prop returns `void | Promise<void>` now and the container's handler is passed directly, so there is no adapter left to drop anything.
+
 **Passing `user.username` from the accounts container.** The first implementation did, and it made the server's check unreachable: the id and the name were read off the same object, so they could not disagree and every request the panel could generate was accepted. The typed value is threaded up through `onAction` instead, so the string the server compares is the string a human typed.
 
 **A separate Trash screen for accounts, like the board trash.** Board trash is a frequent workflow and earns a screen. Deleted accounts are rare; they surface as a row in the list they were already in, with a chip and one remaining action.

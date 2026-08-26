@@ -371,7 +371,7 @@ export const LawhaAdminAccounts = ({
               isYou={user.id === currentUserId}
               busy={busy}
               isLastAdmin={isLastAdmin}
-              onAction={(action, target) => void onAction(action, target)}
+              onAction={onAction}
             />
           ))}
         </ul>

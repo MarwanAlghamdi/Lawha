@@ -144,7 +144,18 @@ interface LawhaAdminAccountRowProps {
      * typed.
      */
     confirmed?: string,
-  ) => void;
+    /**
+     * Returns `void | Promise<void>` so the container can pass its own async
+     * handler **directly**, with no adapter in the JSX.
+     *
+     * There was one, and it read `(action, target) => void onAction(action,
+     * target)`. A two-parameter function is assignable to a three-parameter
+     * type, so it type-checked perfectly and threw the typed username away on
+     * every delete — the server then received `{"username":""}` and refused
+     * with a raw schema error. Nothing but driving the real panel found it.
+     * Removing the adapter removes the whole class.
+     */
+  ) => void | Promise<void>;
 }
 
 export const LawhaAdminAccountRow = ({

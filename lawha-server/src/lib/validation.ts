@@ -242,7 +242,14 @@ export const memberSearchSchema = z.object({
  * is precisely the account most likely to be getting deleted.
  */
 export const adminDeleteAccountSchema = z.object({
-  username: z.string().min(1).max(64),
+  // Messages spelled out, because this one reaches an administrator's screen.
+  // The default is "String must contain at least 1 character(s)", which is
+  // what a panel showed when a client bug sent an empty confirmation — prose
+  // about a string, on a page about an account.
+  username: z
+    .string({ required_error: "Type the account's username to confirm." })
+    .min(1, "Type the account's username to confirm.")
+    .max(64, "That is not this account's username."),
 });
 
 export const deleteAccountSchema = z.object({
