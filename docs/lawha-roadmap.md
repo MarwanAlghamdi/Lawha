@@ -710,6 +710,16 @@ corepack yarn --cwd excalidraw-app vite --host 0.0.0.0 --port 3001
 
 Only 3001 needs to be reachable. `corepack yarn`, not `yarn` — it is not on PATH here. For a Tailscale MagicDNS hostname rather than the IP, set `LAWHA_ALLOWED_HOSTS`; bare IPs are allowed by Vite already.
 
+### The code graphs re-index themselves
+
+`.husky/post-commit` runs `scripts/refresh-graphs.sh` after every commit. It detaches immediately so no commit waits on it, takes a lock, skips mid-rebase and mid-merge, and exits 0 on every path — a housekeeping hook that fails a commit is just a frightening message after a successful one.
+
+`core.hooksPath` is `.husky`, so `.git/hooks/` is never consulted; a hook placed there will not run.
+
+The lock is the point of the script rather than a nicety: the GitNexus index has twice been corrupted with `FTS index 'file_fts' is inconsistent`, each time leaving a quarantined missing-shadow WAL sidecar, and concurrent writers are the likeliest cause. The hook does **not** repair that automatically, because the repair throws the index away — read `.gitnexus/refresh.log`, which prints the remedy.
+
+graphify is refreshed with `graphify update` (code only, no LLM key). The full `--update` also extracts documents and images, which needs a key; without one those nodes are dropped, so the hook deliberately does not run it and shrink them silently.
+
 ```bash
 corepack yarn test:app --watch=false   # 154 files, 2330 passing (2378 collected, 47 skipped, 1 todo)
 corepack yarn test:server              # vitest (18 files, 298 tests), then `node --test scripts/*.test.mjs` (19)
