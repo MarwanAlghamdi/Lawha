@@ -105,12 +105,18 @@ if [ -f "$REPO/.gitnexus/run.cjs" ]; then
 fi
 
 # --- graphify --------------------------------------------------------------
-# `update` is the code-only path and needs no LLM key. The doc/paper/image half
-# needs one; without it those nodes are dropped on every rebuild, so this
-# deliberately does NOT run the full `--update` and shrink them silently.
+# `update` is the code-only path. The doc/paper/image half needs an LLM, which
+# this hook has no way to reach — it runs headless, from git, with no session.
+#
+# That does NOT mean an API key is required. The `/graphify` skill dispatches
+# Claude Code subagents and uses the host session itself as the model; a key
+# (GEMINI_API_KEY) is only the *unattended* alternative. So the honest split is:
+# this hook keeps the code half current for free, and the doc half is refreshed
+# by running `/graphify --update` in a session. Running the full `--update` here
+# would drop those nodes on every commit and shrink the graph silently.
 if command -v graphify >/dev/null 2>&1 && [ -d "$REPO/graphify-out" ]; then
   if (cd "$REPO" && graphify update . >> "$LOG" 2>&1); then
-    log "graphify ok (code only — set GEMINI_API_KEY and run /graphify --update for docs)"
+    log "graphify ok (code only — run /graphify --update in a session for docs and images)"
   else
     log "graphify FAILED"
   fi

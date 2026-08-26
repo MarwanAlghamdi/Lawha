@@ -720,7 +720,9 @@ The lock is the point of the script rather than a nicety: the GitNexus index has
 
 That failure now **repairs itself** — a full clean and rebuild, once, and only for that message. It is safe to do automatically because this index is not data: every node in it is derived from the tree by `analyze`, so a rebuild costs a couple of minutes of CPU in a background process nobody is waiting on. Any other failure is reported and left alone, because "delete it and try again" is not a general answer to an unknown error.
 
-graphify is refreshed with `graphify update` (code only, no LLM key). The full `--update` also extracts documents and images, which needs a key; without one those nodes are dropped, so the hook deliberately does not run it and shrink them silently.
+graphify is refreshed with `graphify update`, which covers code only. Documents and images need an LLM, and a git hook has no way to reach one — it runs headless with no session.
+
+That is not the same as needing an API key. The `/graphify` skill dispatches subagents and uses the host Claude Code session as the model; `GEMINI_API_KEY` is only the unattended alternative. So the hook keeps the code half current for free, and the doc half is refreshed by running **`/graphify --update` in a session**. Running the full `--update` from the hook would drop those nodes on every commit and shrink the graph silently.
 
 ```bash
 corepack yarn test:app --watch=false   # 154 files, 2330 passing (2378 collected, 47 skipped, 1 todo)
