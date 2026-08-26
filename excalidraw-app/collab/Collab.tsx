@@ -2215,10 +2215,13 @@ class Collab extends PureComponent<CollabProps, CollabState> {
    * by the time they join, `App.initializeScene` already consumed
    * `initialData` as `null` on mount and will not call `resetHistory()`
    * again for that session, so the race this tick guards against cannot
-   * occur under that harness shape. It is pinned instead by
+   * occur under that harness shape. It WAS pinned by
    * `undoHistoryLifecycle.test.tsx`'s "survives the real cold-load ordering"
-   * case, which drives an automatic, URL-triggered join instead — the one
-   * ordering where this tick actually matters.
+   * case, which drove an automatic, URL-triggered join instead — the one
+   * ordering where this tick actually matters. That file went with
+   * `59930dbf`, so nothing checks this now; the name is kept because it says
+   * which harness shape a replacement would need, which is the part that took
+   * the work. Do not read it as a live guard.
    */
   private restoreUndoHistory = async (
     boardId: string,
@@ -2347,9 +2350,10 @@ class Collab extends PureComponent<CollabProps, CollabState> {
       // before this could ever fire with a stale `boardId`. Reviewed and
       // enumerated (fix round 2): there is currently no reachable path that
       // reaches a stale `boardId` here without `.cancel()` having already
-      // prevented it, so this line has no test of its own — only the
-      // disjunction of the two is pinned, by the unmount test in
-      // `undoHistoryLifecycle.test.tsx`. Kept anyway: reading `boardId` fresh
+      // prevented it, so this line has no test of its own — the disjunction
+      // of the two was pinned by the unmount test in
+      // `undoHistoryLifecycle.test.tsx`, which went with `59930dbf`, so now
+      // neither half is. Kept anyway: reading `boardId` fresh
       // here rather than closing over it is free, and is what keeps this
       // function correct on its own terms if a future refactor ever calls it
       // from outside that lifecycle, or adds a new door out of a room and

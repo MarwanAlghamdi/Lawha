@@ -14,7 +14,9 @@ coverage
 # gitignored but not listed here makes `yarn test:other` fail on a machine that
 # has simply run the tooling. /test-results and /playwright-report are output of
 # this repo's own `yarn test:visual`; .claude and .infigraph are the local
-# code-intelligence index. None of them is source, and none is committed.
+# code-intelligence index — .gitnexus is its successor and is listed below,
+# which it was not for eight days. None of them is source, and none is
+# committed.
 /test-results
 /playwright-report
 /blob-report
@@ -33,6 +35,15 @@ CLAUDE.md
 docs/superpowers/
 docs/agents/
 .github/copilot-instructions.md
+
+# Same trap, sprung again on 2026-08-26: `yarn test:other` had been red since
+# 2026-08-18 and nobody saw it, because nobody runs a gate that is not in CI.
+# `graphify-out/` is the knowledge graph `/graphify` writes; AGENTS.md is the
+# generated working brief. Both are gitignored, neither is source.
+graphify-out/
+AGENTS.md
+.gitnexus/
+.obsidian/
 
 # One deployment's own notes: its URL, its administrator, which of its
 # protections are off. `.gitignore` covers `*.local.md` so those facts never

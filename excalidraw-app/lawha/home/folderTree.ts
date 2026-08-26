@@ -8,7 +8,9 @@ import type { BoardListEntry, FolderSummary } from "../../data/boards";
  * No React, no fetch, no DOM — the tree is the part of the dashboard most
  * likely to be wrong in a way nobody sees for a week (a subtree that quietly
  * stops rendering, a count that drifts from the grid), and every one of those
- * failures is reachable from a plain array. `folderTree.test.ts` is the point.
+ * failures is reachable from a plain array, which is why the tree is pure:
+ * `folderTree.test.ts` exercised exactly that and went with `59930dbf`, so
+ * the shape survives its test and is what a replacement would hang off.
  *
  * Two defences run through the whole file, and neither is theoretical padding:
  *

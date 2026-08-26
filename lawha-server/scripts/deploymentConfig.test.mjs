@@ -7,9 +7,9 @@
  * file exists rather than a comment.
  *
  * IT IS A REPLACEMENT, NOT A NEW IDEA. `deploymentConfig.test.ts` and
- * `composePortGuard.test.ts` did this job and were removed with the rest of the
- * suites; ADR 0005, ADR 0018 and the roadmap still cite them by name in six
- * places. This is the small, deliberate exception to that removal, because the
+ * `composePortGuard.test.ts` did this job and were removed by `59930dbf` with
+ * the rest of the suites; ADR 0005, ADR 0018 and the roadmap still cite them
+ * by name in six places. This is the small, deliberate exception to that removal, because the
  * changes it guards — an optional TLS listener, a three-valued cookie setting,
  * interpolated container names — are precisely the class those files existed
  * for, and re-adding TLS to this stack has now been done and undone three

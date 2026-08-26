@@ -37,6 +37,7 @@ UPDATE users SET avatar_on_cursor = 0;
 -- now agree for the first time since 009. `UsersRepository.create` names this
 -- column explicitly in its INSERT and is the only INSERT into `users` anywhere
 -- in `src/`, so that literal — not this default — is what a new account gets;
--- it moves to 0 in the same change as this file. `cursorAvatar.test.ts` pins
+-- it moves to 0 in the same change as this file. `cursorAvatar.test.ts` pinned
 -- the boundary that matters, which is what a freshly registered account
--- actually ends up with, rather than the DDL.
+-- actually ends up with, rather than the DDL. It went with `59930dbf`; the
+-- INSERT in `UsersRepository.create` is now the only statement of the rule.

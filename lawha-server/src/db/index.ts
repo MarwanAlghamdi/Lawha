@@ -259,15 +259,26 @@ export const openDatabase = ({
     // encrypted database stops opening, and the operator is told
     // "LAWHA_DB_KEY does not decrypt this database".
     //
-    // It fails loudly now: `scripts/encrypt-db.test.mjs` (with the helpers in
-    // `scripts/testSupport.mjs`, whose own comment at :65 states this ordering)
-    // reads the file back through a raw handle with an explicit
-    // `cipher=sqlcipher`. Swapping these two lines fails it. Every other test
-    // there stays green, which is why that one exists.
+    // NOTHING CHECKS THIS ORDER. Measured on 2026-08-26 by swapping the two
+    // lines and running both gates: `node --test scripts/*.test.mjs` reported
+    // 125/125 pass, and the seven vitest files under `lawha-server/src/`
+    // reported 82/82. Neither reaches this branch — it is entered only when a
+    // key is configured, and no surviving test configures one.
     //
-    // The file named here was `dbEncryption.test.ts`, which does not exist in
-    // this repository and may never have. A DO-NOT-REORDER comment pointing at
-    // a test nobody can find is an invitation to reorder it.
+    // Two earlier versions of this comment each credited a test that could not
+    // catch it. The first named `dbEncryption.test.ts`, which DID pin it and
+    // was deleted by `59930dbf` with every other Lawha suite — it still prints
+    // with `git show 59930dbf^:lawha-server/tests/integration/dbEncryption.test.ts`.
+    // The second, written on 2026-08-25 while correcting the first, named
+    // `scripts/encrypt-db.test.mjs`; that file pins how the key is ESCAPED
+    // (`keyPragma`, its "escapes the key exactly the way src/db/index.ts does"
+    // case) and the order of `cipher` against the read-back probe INSIDE
+    // `encrypt-db.mjs` — never the two lines below.
+    //
+    // So this comment is the only guard, which is why it is this long. A
+    // DO-NOT-REORDER pointing at a test nobody can find is an invitation to
+    // reorder it; one pointing at a test that exists but does not cover the
+    // line is worse, because it survives being checked.
     db.pragma("cipher=sqlcipher");
     db.pragma(keyPragma(key));
   }

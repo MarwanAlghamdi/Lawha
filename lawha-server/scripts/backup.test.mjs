@@ -64,8 +64,9 @@ if (!ageAvailable) {
  * A real key pair, minted by `age-keygen` itself — not a fixture string —
  * because the round-trip test below exists to prove `backup.mjs` produces
  * something `age -d` can actually open, not merely something that looks
- * like ciphertext. Mirrors the fixture in
- * `tests/integration/ageEncrypt.test.ts`.
+ * like ciphertext. Mirrored the fixture in
+ * `tests/integration/ageEncrypt.test.ts`, which went with `59930dbf` — the
+ * name is kept because it is where this shape came from, not a live file.
  */
 const generateAgeKeypair = (dir) => {
   const keygen = spawnSync("age-keygen", [], { encoding: "utf8" });
@@ -121,7 +122,8 @@ const ANY_BACKUP_NAME = /^lawha-\d{8}-\d{6}\.db(\.age)?$/;
  * A syntactically valid recipient with no real key behind it — good enough
  * for the interrupt tests below, which use a fake `age` (see
  * `writeSlowAgeStandIn`) that never actually inspects the recipient it is
- * given. Mirrors the fixture of the same name in `ageEncrypt.test.ts`.
+ * given. Mirrored the fixture of the same name in `ageEncrypt.test.ts`
+ * (removed with the suites — `59930dbf`).
  */
 const FIXTURE_RECIPIENT = `age1${"q".repeat(58)}`;
 
@@ -1022,8 +1024,9 @@ describe("backup.mjs — with LAWHA_DB_KEY set", () => {
 
     /**
      * A value nothing in SQLite would produce on its own, so a hit is a hit.
-     * Same technique, and the same reason, as the CANARY in
-     * `tests/integration/dbEncryption.test.ts`: "the header is not the magic"
+     * Same technique, and the same reason, as the CANARY in the removed
+     * `tests/integration/dbEncryption.test.ts` (`59930dbf`): "the header is
+     * not the magic"
      * is a claim about sixteen bytes, where "a row's own content does not
      * appear anywhere in this file" is a claim about the whole artefact.
      */

@@ -156,9 +156,12 @@ describe("COLLABORATOR_PALETTE", () => {
     // This comment used to claim that copy was "asserted from here". It was
     // not — nothing on this side can see the server's constant, so the two sat
     // at 12 and 5 for a whole phase and seven swatches quietly answered 400.
-    // The bound is now pinned where it is enforced, by "accepts every index the
-    // twelve-colour wheel can produce" in lawha-server/tests/integration/
-    // account.test.ts. Change the length here and that test fails there.
+    // The bound was then pinned where it is enforced, by "accepts every index
+    // the twelve-colour wheel can produce" in lawha-server/tests/integration/
+    // account.test.ts -- which went with 59930dbf. So the same gap is open
+    // again, for the second time, and this comment is the only warning: change
+    // the length here and COLLABORATOR_PALETTE_SIZE on the server must change
+    // in the same commit. Nothing will fail if it does not.
     expect(COLLABORATOR_PALETTE).toHaveLength(12);
     expect(new Set(COLLABORATOR_PALETTE.map((e) => e.hex)).size).toBe(12);
     expect(new Set(COLLABORATOR_PALETTE.map((e) => e.name)).size).toBe(12);

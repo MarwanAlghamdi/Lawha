@@ -837,8 +837,9 @@ describe("restore.mjs — a failed install", () => {
 /**
  * Two safety properties that no behavioural test above can force through
  * execution, checked instead on the script's own source — the same
- * "extract, assert on literals" technique `backupCoverage.test.ts` already
- * uses for `docker/lawha-backup.sh`.
+ * "extract, assert on literals" technique `backupCoverage.test.ts` used for
+ * `docker/lawha-backup.sh` before it was removed (`59930dbf`) — this file is
+ * where the technique still lives.
  *
  * `fs.copyFileSync` is not atomic, so a test cannot make an interrupt land
  * mid-copy on demand without controlling exact byte counts and OS scheduling

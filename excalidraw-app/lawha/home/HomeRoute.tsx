@@ -1248,7 +1248,7 @@ export const HomeRoute = () => {
             It first landed inside the drag ghost, which is mounted always and
             hidden until a drag starts, so it rendered and was never visible.
             `LawhaHomeContact.test.tsx` pinned that it was on screen rather than
-            merely in the DOM, and went with the app suites.
+            merely in the DOM, and went with the app suites (`59930dbf`).
 
             NOT RENDERED AT ALL when nobody is named, which is the shipped
             state. This is the one contact surface with no fallback sentence,

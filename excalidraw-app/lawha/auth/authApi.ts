@@ -730,9 +730,11 @@ export interface LawhaBackupStatus {
    * Milliseconds because everything on this side of the wire is; the status
    * file records seconds and the server converts. Reported so the card can
    * name the threshold rather than reconstruct it out of `intervalHours` plus
-   * a grace constant it would then hold a third copy of — `OVERDUE_GRACE_MS`
-   * on the server is already pinned against the bash one by
-   * `backupCoverage.test.ts`, and a third copy would need its own pin.
+   * a grace constant it would then hold a third copy of. `OVERDUE_GRACE_MS`
+   * on the server and `OVERDUE_GRACE_SECONDS` in `docker/lawha-backup.sh`
+   * were pinned against each other by `backupCoverage.test.ts`, which went
+   * with `59930dbf`; they agree today and nothing checks that they still do,
+   * so a third copy here would be a third unguarded one.
    */
   overdueAfterMs: number | null;
 }

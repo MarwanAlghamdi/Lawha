@@ -54,6 +54,7 @@ UPDATE users SET avatar_on_cursor = 1;
 -- default is dead weight, not a fallback.
 --
 -- The cost of this choice is that the schema now reads as if the default were
--- off. That is what this comment and the one in the repository are for, and the
--- test in `cursorAvatar.test.ts` pins the behaviour at the boundary that matters
--- — what a freshly registered account actually gets — rather than at the DDL.
+-- off. That is what this comment and the one in the repository are for. The
+-- test in `cursorAvatar.test.ts` pinned the behaviour at the boundary that
+-- matters — what a freshly registered account actually gets — rather than at
+-- the DDL; it went with `59930dbf`, so these comments are now the whole of it.

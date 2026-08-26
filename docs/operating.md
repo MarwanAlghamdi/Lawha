@@ -62,7 +62,8 @@ For people who should see a board without joining it. Link visitors are a narrow
   | **Can edit** | Anyone with the link **who is signed in**. Visitors without an account still only watch. |
   | **Can edit, including visitors** | Anyone with the link, account or not. |
 
-  The fourth option is off by default and is chosen per board — existing boards keep whatever they were set to (ADR 0024). In every case a link visitor can edit *that board* and nothing else: not your other boards, not permissions, not the admin panel. If someone should be a durable, named collaborator, give them an invite code instead — it makes them a member with a real role.
+  The fourth option is off by default and is chosen per board — existing boards keep whatever they were set to (ADR 0024). In every case a link visitor can edit _that board_ and nothing else: not your other boards, not permissions, not the admin panel. If someone should be a durable, named collaborator, give them an invite code instead — it makes them a member with a real role.
+
 - **Copy the link** — the Share panel shows the link in every address this deployment publishes (LAN addresses and the ngrok URL if it is running).
 - **Revoke a link** — press the button.
 

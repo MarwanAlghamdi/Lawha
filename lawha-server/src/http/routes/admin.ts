@@ -224,9 +224,11 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
    * outright — typed, or generated and handed back — and it is gone rather
    * than unlinked, because leaving it behind a removed button preserves the
    * exact capability being removed and "a break-glass one click away becomes
-   * the normal path again" (spec §2). It answers 404 now; the assertion that
+   * the normal path again" (spec §2). It answers 404 now. The assertion that
    * it does, together with the assertion that the target's own password still
-   * works, is in `tests/integration/passwordReset.test.ts`.
+   * works, was in `tests/integration/passwordReset.test.ts`, which went with
+   * `59930dbf`. The 404 is structural — no handler is mounted at that path —
+   * so it cannot regress by accident the way an explicit refusal could.
    *
    * Two things deliberately survive it. `lawha-server`'s `reset-password` CLI,
    * because shell access to the host is a different trust level from holding

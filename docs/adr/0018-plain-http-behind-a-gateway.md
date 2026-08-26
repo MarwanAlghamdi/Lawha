@@ -48,6 +48,8 @@ Each of these is accepted by everything that reads it and then quietly does the 
 
 `deploymentConfig.test.ts` asserts all three. Its port assertion has now been inverted twice — "never bind 80" → "bind 80 and 443, serve nothing on 80" → "never bind 80" — and each version was correct for its deployment and silently wrong for the next. The comment there matters as much as the assertion.
 
+> **Amended 2026-08-26 — the file named above does not exist, and the replacement does not assert all three.** `deploymentConfig.test.ts` went with `59930dbf`; `lawha-server/scripts/deploymentConfig.test.mjs` is its deliberate replacement (ADR 0022), and the citation should be read as pointing there. But not one-for-one, and the difference is the middle rule: the `.mjs` asserts that `LAWHA_TRUST_PROXY_HOPS` is **not** pinned in compose — the value belongs to the operator's `lawha.env`, where it is `2` today — so what survives is a guard on _where the number lives_, not on the number being 2. The other two are asserted directly ("no host port 80 or 443 is published", "the container listens on 8080, never on 80"). Fifteen assertions in total, all over raw compose and nginx text. **Nothing in this repository has ever run `nginx -t`** — see the comment at `docker/nginx.conf:194`.
+
 ## One test that was passing for the wrong reason
 
 `expect(conf).toContain("listen 80")` kept passing after the listener moved to 8080, because `listen 80` is a substring of `listen 8080`. It is now anchored to the whole directive. A false pass is worse than a missing test, because it is counted.

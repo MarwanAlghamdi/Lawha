@@ -20,10 +20,14 @@ import Database from "better-sqlite3-multiple-ciphers";
  * and `src/` has not been compiled. Importing it from here would take a backup
  * and then kill the server.
  *
- * `tests/integration/backupVerifyParity.test.ts` reads that script as text and
- * fails if these constants stop matching it. That test is the only thing
- * holding the two copies together — do not delete it, and do not edit the
- * constants below without editing `backup.mjs` in the same commit.
+ * `tests/integration/backupVerifyParity.test.ts` read that script as text and
+ * failed if these constants stopped matching it. It was the only thing holding
+ * the copies together, and it went with `59930dbf` — so the instruction it
+ * carried ("do not delete it") is already overtaken, and the one that remains
+ * is the load-bearing one: **do not edit the constants below without editing
+ * `backup.mjs` in the same commit, because nothing checks any more.** There
+ * are four copies of `COUNTED_TABLES` now, not two — `backup.mjs:161`,
+ * `restore.mjs:143`, `encrypt-db.mjs:106` and this file. They agree today.
  */
 
 /**

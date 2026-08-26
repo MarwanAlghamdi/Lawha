@@ -253,9 +253,10 @@ export const createAuthRouter = (ctx: LawhaContext): Router => {
   // `startSession` used to be a closure here, over `ctx`. It moved to
   // `middleware/session.ts` — taking `ctx` as its first argument instead —
   // when `POST /api/auth/reset/:code` needed the same four lines from a
-  // different router. Nothing about `/login`'s behaviour changed with it, and
-  // `auth.test.ts` and `loginEnumeration.test.ts` are unmodified, which is
-  // what says so.
+  // different router. Nothing about `/login`'s behaviour changed with it: at
+  // the time, `auth.test.ts` and `loginEnumeration.test.ts` were unmodified
+  // and that was the evidence. Both went with `59930dbf`, so this is a record
+  // of how the move was checked, not a standing guarantee.
 
   router.post(
     "/register",

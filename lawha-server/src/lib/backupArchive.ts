@@ -114,8 +114,10 @@ const STATUS_FILE_NAME = ".lawha-backup-status";
  * normally the bug — see `backupVerify.ts`'s header on why `COUNTED_TABLES`
  * is duplicated and what holds the copies together — and the same answer
  * applies: the script cannot be imported (it is bash, in another container),
- * so `tests/integration/backupCoverage.test.ts` reads it as text and fails if
- * these two numbers stop matching.
+ * so `tests/integration/backupCoverage.test.ts` read it as text and failed if
+ * these two numbers stopped matching. **That test went with `59930dbf` and
+ * nothing replaced it.** The two numbers agree today; if you change either,
+ * change the other in the same commit, because no gate will tell you.
  *
  * The script's own comment carries why an hour: it absorbs a long-running
  * backup and a host that was asleep, without absorbing a scheduler that has
@@ -429,8 +431,9 @@ export const resolveArchiveBlobsDir = (
  * `interval_hours*3600 + grace` while this function passed the same line
  * through untouched, and the disagreement was a card reading "Running
  * normally" beside a container `docker compose ps` was already calling
- * unhealthy. The rule now lives here too, as `overdue`, and
- * `backupCoverage.test.ts` pins the two constants together.
+ * unhealthy. The rule now lives here too, as `overdue`. `backupCoverage.test.ts`
+ * used to pin the two constants together; it went with `59930dbf`, so this
+ * copy is held by review alone — see the `OVERDUE_GRACE_MS` header above.
  */
 export const readBackupStatus = (ctx: LawhaContext): BackupStatus => {
   const archiveDir = ctx.config.backupArchiveDir;
