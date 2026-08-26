@@ -716,7 +716,9 @@ Only 3001 needs to be reachable. `corepack yarn`, not `yarn` — it is not on PA
 
 `core.hooksPath` is `.husky`, so `.git/hooks/` is never consulted; a hook placed there will not run.
 
-The lock is the point of the script rather than a nicety: the GitNexus index has twice been corrupted with `FTS index 'file_fts' is inconsistent`, each time leaving a quarantined missing-shadow WAL sidecar, and concurrent writers are the likeliest cause. The hook does **not** repair that automatically, because the repair throws the index away — read `.gitnexus/refresh.log`, which prints the remedy.
+The lock is the point of the script rather than a nicety: the GitNexus index has been corrupted three times with `FTS index 'file_fts' is inconsistent`, twice on a manual run and once after four incremental ones.
+
+That failure now **repairs itself** — a full clean and rebuild, once, and only for that message. It is safe to do automatically because this index is not data: every node in it is derived from the tree by `analyze`, so a rebuild costs a couple of minutes of CPU in a background process nobody is waiting on. Any other failure is reported and left alone, because "delete it and try again" is not a general answer to an unknown error.
 
 graphify is refreshed with `graphify update` (code only, no LLM key). The full `--update` also extracts documents and images, which needs a key; without one those nodes are dropped, so the hook deliberately does not run it and shrink them silently.
 

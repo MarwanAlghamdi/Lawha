@@ -75,12 +75,32 @@ log "refreshing at $COMMIT"
 if [ -f "$REPO/.gitnexus/run.cjs" ]; then
   if (cd "$REPO" && node .gitnexus/run.cjs analyze >> "$LOG" 2>&1); then
     log "gitnexus ok"
+  elif tail -60 "$LOG" | grep -q "FTS index 'file_fts' is inconsistent"; then
+    # SELF-HEAL, and the reasoning is that this index is not data.
+    #
+    # This exact corruption has now happened three times — twice on a manual
+    # run and once after four incremental ones — and the remedy has been
+    # identical every time. It was left manual at first because `clean --force`
+    # sounds destructive. It is not: every node in this index is derived from
+    # the tree by `analyze`, so the worst a rebuild costs is a couple of
+    # minutes of CPU in a background process nobody is waiting on. Leaving it
+    # manual meant the graph silently stopped tracking the code until somebody
+    # read a log, which is the failure this whole script exists to end.
+    #
+    # Once, and only for this message. Any other failure is still reported and
+    # left alone, because "delete the index and try again" is not a general
+    # answer to an unknown error.
+    log "gitnexus FAILED with the known FTS corruption — rebuilding from scratch"
+    if (cd "$REPO" \
+      && npx --yes gitnexus@latest clean --force --lbug-sidecars >> "$LOG" 2>&1 \
+      && npx --yes gitnexus@latest clean --force >> "$LOG" 2>&1 \
+      && npx --yes gitnexus@latest analyze >> "$LOG" 2>&1); then
+      log "gitnexus rebuilt ok"
+    else
+      log "gitnexus REBUILD FAILED — needs a human"
+    fi
   else
-    # The known failure is a corrupt FTS index from a quarantined WAL sidecar.
-    # Not repaired automatically: `clean --force` throws the index away, and a
-    # background hook is the wrong place to decide that. Say what to run.
-    log "gitnexus FAILED — if it says \"FTS index 'file_fts' is inconsistent\", run:"
-    log "  npx gitnexus@latest clean --force --lbug-sidecars && npx gitnexus@latest analyze"
+    log "gitnexus FAILED — see the output above this line"
   fi
 fi
 
