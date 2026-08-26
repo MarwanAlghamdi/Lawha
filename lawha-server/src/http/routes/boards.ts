@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 
-import { toPublicBoard } from "../../db/repositories/boards.js";
+import { toPublicBoard, toTrashedBoard } from "../../db/repositories/boards.js";
 import { buildGuestCookie } from "../../lib/guests.js";
 import { isValidRoomId } from "../../protocol.js";
+import { purgeBoard } from "../../lib/trashSweep.js";
 import {
   notifyBoardAccessChanged,
   notifyBoardRenamed,
@@ -12,6 +13,7 @@ import {
   asyncHandler,
   badRequest,
   forbidden,
+  gone,
   notFound,
 } from "../middleware/errors.js";
 import { RateLimiter, clientIpOf, rateLimit } from "../middleware/rateLimit.js";
@@ -108,6 +110,16 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
       const board = ctx.boards.findById(boardId);
 
       if (!board || board.deleted_at !== null) {
+        // A permanently deleted id is not an available one (ADR 0029). The
+        // branch below exists to say "go ahead and create it", and saying that
+        // about a board somebody destroyed is how the destroyed board comes
+        // back — owned by whoever happened to still hold the link. Checked
+        // first, and answered the same way for a signed-in caller as for an
+        // anonymous one, because the signed-in caller is the one whose write
+        // would be accepted.
+        if (!board && ctx.boards.isPurged(boardId)) {
+          throw gone("This board was deleted permanently.");
+        }
         // A signed-in client legitimately asks about a board id it has only
         // just invented: the row is created by the first scene write, and this
         // must not tell them they cannot use their own new board.
@@ -223,6 +235,11 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
       if (params.id && ctx.boards.findById(params.id)) {
         throw badRequest("A board with that id already exists.");
       }
+      // The row is gone, so the check above passes — which is exactly the case
+      // this one exists for (ADR 0029, migration 020).
+      if (params.id && ctx.boards.isPurged(params.id)) {
+        throw gone("This board was deleted permanently.");
+      }
 
       const board = ctx.boards.create({
         ownerId: req.user!.id,
@@ -232,6 +249,38 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
 
       // A brand new board is in nobody's folder yet.
       res.status(201).json({ board: toPublicBoard(board, null) });
+    }),
+  );
+
+  /**
+   * The caller's trash (ADR 0029).
+   *
+   * **Registered before `GET /:boardId`, and that is load-bearing.** Express
+   * matches routes in registration order, so with these two the other way
+   * round every request for the trash is answered by the board handler with
+   * `boardId = "trash"` — an id nobody owns, which `resolveBoardPermission`
+   * refuses, so the trash reports itself as forbidden. No type error, no other
+   * symptom, and nothing catches it by accident, which is why
+   * `boardsRouteOrder.test.ts` reads the ordering off the router's own layer
+   * stack and asserts it directly.
+   */
+  router.get(
+    "/trash",
+    auth,
+    asyncHandler(async (req, res) => {
+      const rows = ctx.boards.listTrashedForUser(req.user!.id);
+      res.json({
+        boards: rows.map((row) =>
+          toTrashedBoard(row, ctx.config.trashRetentionMs),
+        ),
+        /**
+         * Sent alongside, so the dashboard can say "kept for 30 days" on an
+         * *empty* trash — where there is no board to carry a `purgeAt` and
+         * therefore nothing to infer the policy from. A screen that explains
+         * the rule only once there is something to lose explains it too late.
+         */
+        retentionDays: ctx.config.trashRetentionDays,
+      });
     }),
   );
 
@@ -492,6 +541,102 @@ export const createBoardsRouter = (ctx: LawhaContext): Router => {
       ctx.boards.softDelete(boardId);
       // A deleted board is not accessible to anyone, including whoever is in
       // its room at this instant.
+      await notifyBoardAccessChanged(boardId);
+      res.status(204).end();
+    }),
+  );
+
+  /**
+   * Takes a board back out of the trash (ADR 0029).
+   *
+   * Owner only, matching DELETE exactly. That symmetry is the rule: only the
+   * owner can put a board in the trash, so only the owner can take it out, and
+   * an editor never sees the trash at all — `listTrashedForUser` does not join
+   * `board_members` for the same reason.
+   *
+   * **A 404 for a board that is not in the trash, not a 200.** "Restore a live
+   * board" has no meaning, and answering it with success would let a client
+   * that lost track of its own state believe it had undone something it never
+   * did. The repository's guard makes the same distinction at the SQL level, so
+   * a restore that races another restore reports the truth to the loser rather
+   * than both reporting success.
+   */
+  router.post(
+    "/:boardId/restore",
+    auth,
+    asyncHandler(async (req, res) => {
+      const boardId = req.params.boardId!;
+      const board = ctx.boards.findById(boardId);
+
+      if (!board || board.deleted_at === null) {
+        throw notFound("Board not found in the trash.");
+      }
+      if (board.owner_id !== req.user!.id) {
+        throw forbidden("Only the owner can restore this board.");
+      }
+
+      if (!ctx.boards.restore(boardId)) {
+        throw notFound("Board not found in the trash.");
+      }
+
+      // The mirror of the eviction on delete. Nobody should be in the room —
+      // deleting emptied it — but the relay is the authority on who is
+      // actually connected, not this route's assumption about it, and
+      // re-evaluating an empty room costs nothing.
+      await notifyBoardAccessChanged(boardId);
+
+      const folderId = ctx.folders.folderIdsForBoards(req.user!.id, [boardId])[
+        boardId
+      ];
+      res.json({
+        board: toPublicBoard(ctx.boards.findById(boardId)!, folderId ?? null),
+      });
+    }),
+  );
+
+  /**
+   * Deletes a trashed board for good, now, instead of in thirty days.
+   *
+   * **Only reachable for a board already in the trash.** Two steps rather than
+   * one, and not as a nicety: this is the single operation in the app with no
+   * undo, and requiring the board to have been soft-deleted first means the
+   * irreversible button cannot be the first button anyone presses. The
+   * repository guards it a second time in SQL, so even a caller that bypassed
+   * this route could not reach a live board with it.
+   *
+   * `purgeBoard` rather than a `DELETE` written here, because a board is a row
+   * *and* a directory of uploaded images, and only the row is reachable by a
+   * foreign key. See `lib/trashSweep.ts`.
+   */
+  router.delete(
+    "/:boardId/permanent",
+    auth,
+    asyncHandler(async (req, res) => {
+      const boardId = req.params.boardId!;
+      const board = ctx.boards.findById(boardId);
+
+      if (!board || board.deleted_at === null) {
+        throw notFound("Board not found in the trash.");
+      }
+      if (board.owner_id !== req.user!.id) {
+        throw forbidden("Only the owner can delete this board.");
+      }
+
+      // The boolean is the point. `purge` is guarded on `deleted_at IS NOT
+      // NULL` in SQL, so a restore that lands between the check above and this
+      // line makes it a no-op — and answering 204 there would take the board
+      // out of the caller's trash view while leaving it alive on the
+      // dashboard, which is the one outcome neither button asked for.
+      if (!(await purgeBoard(ctx, boardId))) {
+        throw notFound("Board not found in the trash.");
+      }
+
+      // Mirrors the soft delete. It should be a no-op — the room was emptied
+      // when the board went into the trash — but "should be empty" is an
+      // assumption about the relay, and the relay is the thing that actually
+      // knows. On a deployment with `allowUnknownBoards` a socket left behind
+      // would otherwise be re-resolved as being in an *unknown* board, which
+      // is permissive.
       await notifyBoardAccessChanged(boardId);
       res.status(204).end();
     }),

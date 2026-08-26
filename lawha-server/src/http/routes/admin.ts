@@ -6,11 +6,16 @@ import { generatePassword } from "../../lib/firstBootAdmin.js";
 import { LOCKED_PASSWORD_HASH, hashPassword } from "../../lib/password.js";
 import {
   adminCreateUserSchema,
+  adminDeleteAccountSchema,
   adminResetCodeSchema,
   adminSetDisabledSchema,
   adminSetRoleSchema,
+  normalizeUsername,
 } from "../../lib/validation.js";
-import { notifyUserSessionsRevoked } from "../../socket/liveAccess.js";
+import {
+  notifyBoardAccessChanged,
+  notifyUserSessionsRevoked,
+} from "../../socket/liveAccess.js";
 import {
   asyncHandler,
   badRequest,
@@ -106,6 +111,25 @@ const auditActor = (req: Request) => ({
   viaMaster: req.viaMaster === true || req.masterAdmin === true,
 });
 
+/**
+ * Refuses an account that is in the trash (ADR 0031).
+ *
+ * Every action guarded by this assumes an account somebody can still sign
+ * into. Minting a reset code for a deleted account hands the administrator a
+ * link that `passwordReset.ts` refuses at redemption — a control that fails
+ * only in the other person's hands, which is invariant 24 inverted. Turning
+ * one off, signing it out or demoting it are each a no-op dressed as an
+ * action.
+ *
+ * The panel hides all four for a deleted row and says so in a comment; this is
+ * the half that makes that sentence true rather than a hope about the client.
+ */
+const assertNotDeleted = (target: { deleted_at: number | null }): void => {
+  if (target.deleted_at !== null) {
+    throw badRequest("This account is deleted. Restore it first.");
+  }
+};
+
 export const createAdminRouter = (ctx: LawhaContext): Router => {
   const router = Router();
 
@@ -165,6 +189,12 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       secureCookiesEffective: resolveSecureCookie(ctx, req),
       masterPasswordConfigured: ctx.masterPassword.enabled,
       sessionTtlDays: ctx.config.sessionTtlDays,
+      // How long a deleted board is recoverable before the sweep destroys it
+      // (ADR 0029). 0 travels as 0 for the same reason `sessionTtlDays` does —
+      // it means "kept for ever", and flattening it here would leave the panel
+      // printing "0 days" for the setting that decides whether user data is
+      // ever irreversibly removed.
+      trashRetentionDays: ctx.config.trashRetentionDays,
       dbPath: ctx.config.dbPath,
       filesDir: ctx.config.filesDir,
       // Real accounts: the `anonymous` stand-in is machinery, and counting it
@@ -278,6 +308,7 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       if (!target || target.username_lower === ANONYMOUS_USERNAME) {
         throw notFound("No such account.");
       }
+      assertNotDeleted(target);
 
       // Done before the code is minted, not after: a code that could still be
       // redeemed against the old, still-working password would defeat the
@@ -372,6 +403,7 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       if (!target) {
         throw notFound("No such account.");
       }
+      assertNotDeleted(target);
 
       // Locking every admin out of the admin panel is not a state anyone can
       // recover from through the UI, so it is refused rather than allowed and
@@ -433,6 +465,7 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       if (!target) {
         throw notFound("No such account.");
       }
+      assertNotDeleted(target);
 
       const revoked = ctx.sessions.revokeAllForUser(target.id);
       // "They left their laptop on a train" is the case this route was written
@@ -477,6 +510,7 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
       if (!target) {
         throw notFound("No such account.");
       }
+      assertNotDeleted(target);
       if (disabled && target.id === req.user?.id) {
         // Nothing recovers from this through the UI: the next request would
         // resolve to nobody and the panel would refuse its own operator.
@@ -515,6 +549,169 @@ export const createAdminRouter = (ctx: LawhaContext): Router => {
         targetUserId: target.id,
         targetLabel: target.username_display,
         detail: disabled ? `${revoked} session(s) revoked` : null,
+      });
+
+      res.json({ user: toPublicUser(updated!) });
+    }),
+  );
+
+  /**
+   * Deletes an account — into a thirty-day window, not out of existence
+   * (ADR 0031).
+   *
+   * The irreversible counterpart to "turn off", and the difference between
+   * them is what the account keeps: a disabled account keeps its boards and
+   * comes back exactly as it was, while this one's boards go dark with it and
+   * are destroyed for good when the window closes. That is why the confirm
+   * step is heavier than any other action on this panel.
+   *
+   * **Nothing is stamped on the boards.** They become unreachable because
+   * `BoardsRepository.getBoardAccess` reads the owner's `deleted_at` beside
+   * their own; see migration 021 for why deriving beats stamping, and
+   * `listForUser` for the one query that does not go through that choke point
+   * and therefore had to be fixed by hand.
+   *
+   * Four refusals, in the order a mistake is most likely to be made:
+   */
+  router.delete(
+    "/users/:userId",
+    rateLimit(writes, callerOf),
+    asyncHandler(async (req, res) => {
+      const { username } = adminDeleteAccountSchema.parse(req.body);
+      const target = ctx.users.findById(req.params.userId as string);
+
+      if (
+        !target ||
+        target.deleted_at !== null ||
+        // The `anonymous` stand-in, refused by name the way `reset-code` and
+        // `GET /users` already refuse it. It is machinery rather than a person,
+        // and under `LAWHA_REQUIRE_AUTH=false` it owns **every board on the
+        // server** — so deleting it takes the whole deployment dark, and
+        // because `GET /users` filters it out there would be no row left in
+        // the panel to press Restore on. `anonymousUser.ts` states this as a
+        // standing obligation on anything new that can damage a row.
+        target.username_lower === ANONYMOUS_USERNAME
+      ) {
+        throw notFound("No such account.");
+      }
+      if (target.id === req.user?.id) {
+        // Not merely unwise: the next request would resolve to nobody and the
+        // panel would refuse its own operator. Deleting your own account is
+        // done from the account page, with your password, and immediately.
+        throw badRequest("You cannot delete your own account.");
+      }
+      if (target.is_admin === 1) {
+        // Two deliberate steps rather than a last-administrator count.
+        // Counting would allow deleting an administrator whenever a second one
+        // happened to exist, which makes the safety of an irreversible action
+        // depend on a number nobody was looking at. Demote, then delete.
+        throw badRequest(
+          "This account is an administrator. Revoke that first.",
+        );
+      }
+      if (normalizeUsername(username) !== target.username_lower) {
+        // **The server-side half of the typed confirmation, and the half that
+        // counts.** The panel disables its own button until the typed name
+        // matches, which is a convenience and enforces nothing — a client is
+        // not a place to put a guarantee (invariant 21). What this check buys
+        // is not authentication, which the admin session already provided: it
+        // is evidence that whoever pressed the button read *which* account
+        // they had selected, which is the actual thing that goes wrong.
+        throw badRequest("That is not this account's username.");
+      }
+
+      // Read before the delete lands and reused three times below. Not
+      // re-queried per use: the sweep could in principle run between two calls
+      // and the audit line would then disagree with the eviction it describes.
+      const ownedBoardIds = ctx.boards.idsOwnedBy(target.id);
+
+      const deleted = ctx.users.setDeleted(target.id, true);
+      const revoked = ctx.sessions.revokeAllForUser(target.id);
+      await notifyUserSessionsRevoked(target.id);
+
+      // Without this, a collaborator already in one of those rooms keeps
+      // drawing into a board nobody will ever be able to open again, until
+      // they happen to reload (invariant 23).
+      // Written before the eviction, not after. Thirty days from now this row
+      // is the only remaining record that the account existed or who removed
+      // it, and the account is already deleted by this line — so it must not be
+      // possible for a failure in the housekeeping below to leave the deletion
+      // done and unrecorded.
+      process.stdout.write(
+        `lawha: ${actorOf(req)} deleted ${target.username_display}\n`,
+      );
+      ctx.audit.record({
+        ...auditActor(req),
+        action: "account.deleted",
+        targetUserId: target.id,
+        targetLabel: target.username_display,
+        detail: `${revoked} session(s) revoked, ${ownedBoardIds.length} board(s) will be destroyed`,
+      });
+
+      // The rooms of every board this account owns, emptied now rather than in
+      // thirty days. Each failure is logged and swallowed: an unreachable
+      // socket must not turn a completed, recorded deletion into a 500, which
+      // would leave the panel saying "that did not work" over a row that is
+      // deleted — and whose retry answers 404.
+      await Promise.all(
+        ownedBoardIds.map((boardId) =>
+          notifyBoardAccessChanged(boardId).catch((error: unknown) => {
+            process.stderr.write(
+              `lawha: could not evict board ${boardId} after deleting ` +
+                `${target.username_display}: ${
+                  error instanceof Error ? error.message : String(error)
+                }\n`,
+            );
+          }),
+        ),
+      );
+
+      res.json({ user: toPublicUser(deleted!) });
+    }),
+  );
+
+  /**
+   * Takes an account back out of the trash (ADR 0031).
+   *
+   * **Does not touch `disabled_at`.** An account that was turned off in March
+   * and deleted in April comes back turned off, because those are two separate
+   * decisions and only one of them is being undone. "Restore everything" is
+   * the intuitive instinct and it would silently re-admit somebody an
+   * administrator had deliberately locked out.
+   *
+   * A 404 rather than a 200 for an account that is not deleted, matching the
+   * board restore contract: "restore a live account" has no meaning, and
+   * answering it with success lets a client that lost track of its own state
+   * believe it undid something it never did.
+   */
+  router.post(
+    "/users/:userId/restore",
+    rateLimit(writes, callerOf),
+    asyncHandler(async (req, res) => {
+      const target = ctx.users.findById(req.params.userId as string);
+
+      if (!target || target.deleted_at === null) {
+        throw notFound("No such account in the trash.");
+      }
+
+      const updated = ctx.users.setDeleted(target.id, false);
+
+      // Mirrors the eviction on delete. Every room should be empty — the
+      // delete emptied them — but "should be empty" is an assumption about the
+      // relay, and the relay is the thing that actually knows.
+      await Promise.all(
+        ctx.boards.idsOwnedBy(target.id).map(notifyBoardAccessChanged),
+      );
+
+      process.stdout.write(
+        `lawha: ${actorOf(req)} restored ${target.username_display}\n`,
+      );
+      ctx.audit.record({
+        ...auditActor(req),
+        action: "account.restored",
+        targetUserId: target.id,
+        targetLabel: target.username_display,
+        detail: null,
       });
 
       res.json({ user: toPublicUser(updated!) });

@@ -2050,3 +2050,179 @@ body[data-lw-theme="dark"] .lw-board-card__mini {
     transform-origin: center;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Trash (ADR 0029)
+//
+// A list, never the grid. A card carries a thumbnail and a click target that
+// opens the board, and neither is true here — a deleted board has no preview
+// worth rendering and cannot be opened at all. Reusing the card would have
+// produced a screen of clickable tiles where clicking does nothing, which is
+// how a surface teaches people that it is broken.
+// ---------------------------------------------------------------------------
+// Its own card, matching `.lw-home__folders`, rather than a bare button below
+// it. The button has to live outside that element — it is not a folder filter
+// and must not be read as a fourth radio in a group labelled "Filter by
+// folder" — and a control sitting outside the only card in the column reads as
+// something that fell off it. Same surface, same border, its own box.
+.lw-home__trash-card {
+  padding: 9px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-card);
+  background: var(--lw-surface);
+  box-shadow: var(--lw-shadow-card);
+}
+
+.lw-home__trash-row {
+  // Not a drop target and never draggable, unlike every folder row above it.
+  // `.lw-folder-row` is shared for the metrics and the highlight only.
+  cursor: pointer;
+}
+
+.lw-home__trash-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  // Matches `.lw-folder-row__dot`'s footprint so the label lines up with the
+  // folder names above it rather than sitting a couple of pixels out.
+  width: 10px;
+  height: 10px;
+  color: var(--lw-text3);
+}
+
+.lw-folder-row--on .lw-home__trash-icon {
+  color: var(--lw-text);
+}
+
+.lw-trash {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-block-start: 4px;
+}
+
+.lw-trash__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lw-trash__note {
+  margin: 0;
+  color: var(--lw-text3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.lw-trash__empty {
+  margin: 0;
+  color: var(--lw-text3);
+  font-size: 13.5px;
+}
+
+.lw-trash__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lw-trash__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-lg);
+  background: var(--lw-surface);
+}
+
+.lw-trash__about {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lw-trash__name {
+  overflow: hidden;
+  color: var(--lw-text);
+  font-size: 14px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lw-trash__meta {
+  color: var(--lw-text3);
+  font-size: 12px;
+}
+
+.lw-trash__actions,
+.lw-trash__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+// In place, on the row, rather than in a dialog — invariant 19 rules out
+// `window.confirm`, and a modal for one row would take the board's own name
+// off screen at the moment it matters most.
+.lw-trash__confirm {
+  padding: 6px 10px;
+  border: var(--lw-border-width) solid var(--lw-danger-b);
+  border-radius: var(--lw-r-lg);
+  background: var(--lw-danger-bg);
+}
+
+.lw-trash__confirm-text {
+  color: var(--lw-danger);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.lw-trash__action {
+  height: var(--lw-h-sm);
+  padding: 0 12px;
+  border: var(--lw-border-width) solid var(--lw-border);
+  border-radius: var(--lw-r-md);
+  background: transparent;
+  color: var(--lw-text2);
+  font-family: var(--lw-font-sans);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--lw-text);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+}
+
+.lw-trash__action--primary {
+  border-color: var(--lw-accent);
+  color: var(--lw-accent);
+}
+
+// The one irreversible control in the dashboard, and the only one styled as
+// such. It is deliberately NOT the default-looking button of the pair: the
+// row's primary action is Restore, which is the reason to be on this screen.
+// Outlined in the danger colour rather than filled with it. There is no
+// on-danger text token in `lawha-tokens.scss`, and a hard-coded white would be
+// the one colour on this screen that does not follow the theme — `--lw-danger`
+// is a light-red in dark mode, where white-on-it fails contrast outright.
+.lw-trash__action--danger {
+  border-color: var(--lw-danger);
+  background: var(--lw-danger-bg);
+  color: var(--lw-danger);
+}

@@ -230,6 +230,28 @@ export const memberSearchSchema = z.object({
  * Deleting an account is irreversible and takes every board with it, so it is
  * re-authenticated rather than merely session-authenticated.
  */
+/**
+ * The typed-back username that confirms an administrator's delete (ADR 0031).
+ *
+ * Deliberately NOT `usernameSchema`. That one validates the shape of a name
+ * somebody is about to *create* — length, character set, reserved words — and
+ * none of that is the question here. This field confirms a name that already
+ * exists, and the only check that matters is made in the route, against the
+ * target row. Reusing the stricter schema would reject a legitimate
+ * confirmation of a legacy username that no longer passes today's rules, which
+ * is precisely the account most likely to be getting deleted.
+ */
+export const adminDeleteAccountSchema = z.object({
+  // Messages spelled out, because this one reaches an administrator's screen.
+  // The default is "String must contain at least 1 character(s)", which is
+  // what a panel showed when a client bug sent an empty confirmation — prose
+  // about a string, on a page about an account.
+  username: z
+    .string({ required_error: "Type the account's username to confirm." })
+    .min(1, "Type the account's username to confirm.")
+    .max(64, "That is not this account's username."),
+});
+
 export const deleteAccountSchema = z.object({
   password: z.string().min(1).max(128),
 });

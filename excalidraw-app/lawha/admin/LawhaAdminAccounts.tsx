@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   LawhaApiError,
+  adminDeleteAccount,
   adminIssueResetCode,
+  adminRestoreAccount,
   adminRevokeSessions,
   adminSetDisabled,
   adminSetRole,
@@ -144,10 +146,15 @@ export const LawhaAdminAccounts = ({
    * that counted only the role would offer to demote the last usable one and
    * then show the refusal.
    */
+  // Mirrors `countActiveAdmins` on the server, including its deleted clause:
+  // the two decide the same thing and a client that counted differently would
+  // offer a control the server refuses, or hide one it would have allowed.
   const isLastAdmin = useMemo(
     () =>
-      (users ?? []).filter((user) => user.isAdmin && user.disabledAt === null)
-        .length <= 1,
+      (users ?? []).filter(
+        (user) =>
+          user.isAdmin && user.disabledAt === null && user.deletedAt === null,
+      ).length <= 1,
     [users],
   );
 
@@ -164,7 +171,11 @@ export const LawhaAdminAccounts = ({
         current?.map((row) => (row.id === updated.id ? updated : row)) ?? null,
     );
 
-  const onAction = async (action: RowAction, user: LawhaUser) => {
+  const onAction = async (
+    action: RowAction,
+    user: LawhaUser,
+    confirmed?: string,
+  ) => {
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -200,6 +211,34 @@ export const LawhaAdminAccounts = ({
             action === "disable"
               ? `${user.username} is turned off and signed out everywhere.`
               : `${user.username} can sign in again.`,
+          );
+          break;
+        }
+        case "delete": {
+          // What the administrator actually typed, carried up from the row.
+          // NOT `user.username`: reading the name off the same object as the
+          // id would make them incapable of disagreeing, so the server's check
+          // would accept every request this panel can generate and the guard
+          // would exist only on the client — which is where guards do not
+          // count (invariant 21).
+          const updated = await adminDeleteAccount(user.id, confirmed ?? "");
+          replace(updated);
+          setNotice(
+            `${user.username} is deleted, with every board they owned. You can restore them from here until the retention window closes.`,
+          );
+          break;
+        }
+        case "restore": {
+          const updated = await adminRestoreAccount(user.id);
+          replace(updated);
+          setNotice(
+            updated.disabledAt === null
+              ? `${updated.username} is back, boards and all.`
+              : // Restoring undoes the deletion and nothing else. Saying so
+                // here is the difference between an administrator knowing the
+                // account is still locked out and finding out from the person
+                // who tried to sign in.
+                `${updated.username} is back, boards and all — still turned off, which the restore did not change.`,
           );
           break;
         }
@@ -332,7 +371,7 @@ export const LawhaAdminAccounts = ({
               isYou={user.id === currentUserId}
               busy={busy}
               isLastAdmin={isLastAdmin}
-              onAction={(action, target) => void onAction(action, target)}
+              onAction={onAction}
             />
           ))}
         </ul>

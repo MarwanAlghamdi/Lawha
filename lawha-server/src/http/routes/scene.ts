@@ -5,6 +5,7 @@ import {
   asyncHandler,
   badRequest,
   forbidden,
+  gone,
   notFound,
 } from "../middleware/errors.js";
 import { principalOf, requireAuth } from "../middleware/requireAuth.js";
@@ -99,6 +100,17 @@ export const createSceneRouter = (ctx: LawhaContext): Router => {
     }
 
     if (!ctx.boards.findById(boardId)) {
+      // A destroyed board is not an unclaimed id (ADR 0029, migration 020).
+      // Checked BEFORE `allowMissing`, because `allowMissing` is what lets the
+      // caller of a missing id become the owner of a new board at that id —
+      // which, for an id whose board was just purged, means the owner's own
+      // still-open editor tab, or anyone who kept the link, recreating the
+      // board they thought they had destroyed. `gone` rather than `notFound`:
+      // the client asked about something that existed and does not any more,
+      // and a 404 would read as "not yet" to code whose next move is to write.
+      if (ctx.boards.isPurged(boardId)) {
+        throw gone("This board was deleted permanently.");
+      }
       if (allowMissing) {
         return null;
       }

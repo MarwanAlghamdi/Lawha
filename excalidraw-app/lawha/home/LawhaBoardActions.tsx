@@ -38,7 +38,15 @@ export const LawhaBoardActions = ({
     return (
       <div className="lw-board-card__confirm" role="alertdialog">
         <span className="lw-board-card__confirm-text">
-          Delete this board? Everything on it goes too, and it cannot be undone.
+          {/*
+            Was "it cannot be undone", which stopped being true when the trash
+            arrived (ADR 0029). A confirmation that overstates the consequence
+            is not the safe direction to be wrong in: it teaches people that
+            this dialog exaggerates, and the one place the sentence *is* true —
+            "Delete for ever" in the trash — is where they most need to believe
+            it.
+          */}
+          Move this board to the trash? You can restore it from there.
         </span>
         <div className="lw-board-card__actions">
           <button

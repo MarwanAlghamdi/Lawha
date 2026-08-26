@@ -1,16 +1,10 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import { Router } from "express";
 import { z } from "zod";
 
 import { isAccountActive, toPublicUser } from "../../db/repositories/users.js";
 import { ANONYMOUS_USERNAME } from "../../lib/anonymousUser.js";
-import { isValidRoomId } from "../../protocol.js";
-import {
-  notifyBoardAccessChanged,
-  notifyUserSessionsRevoked,
-} from "../../socket/liveAccess.js";
+import { purgeAccount } from "../../lib/accountSweep.js";
+import { notifyUserSessionsRevoked } from "../../socket/liveAccess.js";
 import {
   consumeTimingBudget,
   hashPassword,
@@ -45,7 +39,6 @@ import {
   buildClearedSessionCookie,
   startSession,
 } from "../middleware/session.js";
-import { resolveAvatarDir } from "./users.js";
 
 import type { LawhaContext } from "../../context.js";
 
@@ -691,80 +684,14 @@ export const createAuthRouter = (ctx: LawhaContext): Router => {
         throw unauthorized("Password is incorrect.");
       }
 
-      const { deletedBoardIds } = ctx.users.deleteAccount(user.id);
-
-      // Every live socket this account holds, anywhere — its own boards
-      // (about to lose their file trees below, and already gone from the
-      // database above) and any other board it had merely joined. No
-      // `keepSessionToken`: unlike a password change there is no session left
-      // to spare, and a "delete my data" that answers 204 has to mean nothing
-      // of this account survives it, sockets included.
-      await notifyUserSessionsRevoked(user.id);
-
-      // The account's OWN boards are gone as rows, not just this account's
-      // access to them — `deleteAccount` cascades them away. Anyone else still
-      // in one of those rooms (a co-member, a share-link guest) has to be
-      // re-checked and evicted the same way `DELETE /:boardId` already does
-      // for a single board, or they keep relaying edits into a room whose
-      // board no longer exists.
-      await Promise.all(
-        deletedBoardIds.map((boardId) => notifyBoardAccessChanged(boardId)),
-      );
-
-      // Resolved rather than interpolated, for the same reason the board
-      // directories below are: a user id is a path component here, and nothing
-      // outside the avatars root may be reachable from one.
-      const avatarDir = resolveAvatarDir(ctx.config.filesDir, user.id);
-
-      // A failure here must not turn an irreversible, re-authenticated delete
-      // into a 500 — the database rows are already gone, and telling the
-      // caller their own deletion failed when the account really is deleted
-      // would be worse than the leak. But it must not stay quiet either: this
-      // catch used to be `.catch(() => undefined)`, and the operator had no
-      // way to learn that a directory did not go with the account it belonged
-      // to. Logged with the user id, the board id (or "avatar"), and the exact
-      // path, because that is what somebody cleaning this up by hand needs —
-      // the avatar in particular is, as the comment below says, still a
-      // recognisable picture of a deleted person until this succeeds.
-      const logCleanupFailure = (
-        what: string,
-        target: string,
-        error: unknown,
-      ) => {
-        process.stderr.write(
-          `lawha: failed to remove ${what} for deleted user ${user.id} ` +
-            `(${target}): ` +
-            `${error instanceof Error ? error.message : String(error)}\n`,
-        );
-      };
-
-      // Encrypted blobs whose key died with the account are unreadable, but
-      // they are not free — remove the directories rather than leak disk. The
-      // avatar directory is not encrypted at all and is the one thing here that
-      // would still be a recognisable picture of a deleted person.
-      await Promise.all([
-        // Re-validated before touching the filesystem. Board ids arrive from
-        // clients, and `..` reaching path.resolve here would delete the wrong
-        // tree entirely — the id having been accepted elsewhere is not a
-        // licence to trust it as a path component.
-        ...deletedBoardIds.filter(isValidRoomId).map((boardId) => {
-          const roomDir = path.resolve(ctx.config.filesDir, "rooms", boardId);
-          return fs
-            .rm(roomDir, { recursive: true, force: true })
-            .catch((error: unknown) =>
-              logCleanupFailure(`board ${boardId}`, roomDir, error),
-            );
-        }),
-        ...(avatarDir
-          ? [
-              fs
-                .rm(avatarDir, { recursive: true, force: true })
-                .catch((error: unknown) =>
-                  logCleanupFailure("avatar", avatarDir, error),
-                ),
-            ]
-          : []),
-      ]);
+      // One call, shared with the retention sweep that destroys accounts an
+      // administrator deleted (ADR 0031). Everything that used to be written
+      // out here — the transaction, the socket eviction, the co-member
+      // eviction on the boards that cascade away, the avatar and room
+      // directories — lives in `purgeAccount` now, unchanged. Two code paths
+      // that destroy an account and do not share this function are two chances
+      // to leak a directory or skip a tombstone.
+      await purgeAccount(ctx, user.id);
 
       res.append("Set-Cookie", buildClearedSessionCookie(ctx, req));
       res.status(204).end();

@@ -638,3 +638,34 @@
   color: var(--lw-text2);
   text-wrap: pretty;
 }
+
+// ---------------------------------------------------------------------------
+// Deleting an account (ADR 0031)
+// ---------------------------------------------------------------------------
+
+// The typed-username box inside the confirm strip. Full width and directly
+// under the question, so the name being typed sits below the name being asked
+// for rather than beside it — the two are compared by eye before they are
+// compared by the server.
+.lw-admin-row__challenge {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--lw-h-sm);
+  padding: 0 10px;
+  border: var(--lw-border-width) solid var(--lw-danger-b);
+  border-radius: var(--lw-r-md);
+  background: var(--lw-input);
+  color: var(--lw-text);
+  font-family: var(--lw-font-mono);
+  font-size: 13px;
+}
+
+// Why a deleted row offers only Restore, said in the row rather than in a
+// tooltip nobody hovers.
+.lw-admin-row__note {
+  flex: 1 1 200px;
+  min-width: 0;
+  color: var(--lw-text3);
+  font-size: 12.5px;
+  line-height: 1.45;
+}

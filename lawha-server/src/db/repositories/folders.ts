@@ -113,6 +113,16 @@ export class FoldersRepository {
            LEFT JOIN boards b
              ON b.id = bf.board_id
             AND b.deleted_at IS NULL
+            -- And its owner is still here (ADR 0031). The comment above says
+            -- this predicate mirrors listForUser, and that is a contract
+            -- rather than a coincidence: when listForUser learned to hide a
+            -- deleted account's boards and this did not, the chip counted a
+            -- board the grid beneath it refused to show -- the exact "count
+            -- that disagrees with the grid" this query was rewritten once to
+            -- prevent.
+            AND EXISTS (SELECT 1 FROM users o
+                         WHERE o.id = b.owner_id
+                           AND o.deleted_at IS NULL)
             AND (b.owner_id = f.owner_id
                  OR EXISTS (SELECT 1 FROM board_members m
                              WHERE m.board_id = b.id

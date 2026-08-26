@@ -23,7 +23,8 @@ import {
   resolveCellText,
   gridLines,
   highlight,
-  tensorGeometry,
+  resolveTensorLabels,
+  tensorShapeAlphas,
   TENSOR_FACE_ALPHAS,
   tableColCount,
   tableRowCount,
@@ -182,57 +183,37 @@ export const renderTensorTextToSvg = (
   renderConfig: ThemedConfig,
 ) => {
   const doc = node.ownerDocument!;
-  const { volumetric, faceX, faceY, faceWidth, faceHeight, dx, dy } =
-    tensorGeometry(element);
-  const fontSize = element.fontSize;
   const family = getFontFamilyString({ fontFamily: FONT_FAMILY.Cascadia });
   const fill = applyDarkModeFilter(
     element.strokeColor,
     renderConfig.theme === THEME.DARK,
   );
-  const gap = 6;
-  const put = (text: string, x: number, y: number, anchor: string) =>
+
+  // Iterated, not re-derived. This function used to hold its own copy of the
+  // whole layout — the same three anchor formulas, the same `?? ""`, its own
+  // `const gap = 6` standing in for a constant `tensorElement.ts` did not
+  // export — with only the anchor names differing. `resolveTensorLabels` is
+  // now the one place that decides, and this is the only place that knows how
+  // an SVG spells a vertical anchor.
+  for (const label of resolveTensorLabels(element)) {
     node.appendChild(
-      svgText(doc, text, x, y, { fill, fontFamily: family, fontSize, anchor }),
-    );
-
-  if (volumetric) {
-    const [depth, height, width] = element.dims;
-    put(
-      String(width ?? ""),
-      faceX + faceWidth / 2,
-      faceY + faceHeight + gap,
-      "middle",
-    );
-    put(
-      String(height ?? ""),
-      faceX - gap,
-      faceY + faceHeight / 2 - fontSize / 2,
-      "end",
-    );
-    put(String(depth ?? ""), faceX + faceWidth + dx + gap, faceY - dy, "start");
-  } else {
-    const [rows, cols] = element.dims;
-    put(
-      String(cols ?? ""),
-      faceX + faceWidth / 2,
-      faceY + faceHeight + gap,
-      "middle",
-    );
-    put(
-      String(rows ?? ""),
-      faceX - gap,
-      faceY + faceHeight / 2 - fontSize / 2,
-      "end",
-    );
-  }
-
-  if (element.name) {
-    put(
-      element.name,
-      faceX + faceWidth / 2,
-      faceY + faceHeight / 2 - fontSize / 2,
-      "middle",
+      svgText(
+        doc,
+        label.text,
+        label.x,
+        // `svgText` sets `dominant-baseline: hanging`, which is the SVG
+        // spelling of the canvas's `textBaseline: "top"`. There is no equally
+        // portable spelling of `middle` — `central` and `middle` disagree
+        // across renderers — so a centred label is hung half a line higher
+        // instead, which is what this file already did for the name.
+        label.baseline === "middle" ? label.y - element.fontSize / 2 : label.y,
+        {
+          fill,
+          fontFamily: family,
+          fontSize: element.fontSize,
+          anchor: label.align,
+        },
+      ),
     );
   }
 };
@@ -336,4 +317,16 @@ export const renderCodeToSvg = (
   });
 };
 
+/**
+ * Re-exported so `staticSvgScene` can fade a tensor's faces without importing
+ * from `@excalidraw/element` directly.
+ *
+ * **Superseded by `tensorShapeAlphas`, and kept only as the re-export path.**
+ * The face table alone cannot answer the question the exporter asks — "what
+ * opacity is shape N" — once a tensor emits three faces per stack layer. That
+ * answer comes from `tensorShapeAlphas`, which is what `staticSvgScene` now
+ * calls; this line survives so the module's public surface is unchanged for
+ * anything else reading it.
+ */
 export const TENSOR_SVG_FACE_ALPHAS = TENSOR_FACE_ALPHAS;
+export { tensorShapeAlphas };

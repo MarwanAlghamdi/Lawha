@@ -73,6 +73,10 @@ Both are bind-mounted into the container; neither is a Docker volume. This is wh
 
 - **`LAWHA_SESSION_TTL_DAYS`** — session lifetime in days (default 0 = never expires). Changing this reaches sessions that already exist the next time each one is used, so turning expiry off makes live sessions permanent.
 
+### Trash
+
+- **`LAWHA_TRASH_RETENTION_DAYS`** — how long a deleted board stays restorable (default 30). Deleting a board moves it to Trash on the dashboard; when the window runs out, an hourly sweep destroys the row, the scene and the uploaded images. **`0` means kept for ever, not deleted now** — the same convention as `LAWHA_SESSION_TTL_DAYS`. Raising it reaches boards already in the trash; lowering it sweeps anything already past the new window. The current value is shown in the admin panel.
+
 ### Rate limiting
 
 All accept `0` to disable. Global per-IP limits are loose on purpose (a whole office behind one NAT), but the per-username limit is where the protection lives — an attacker cannot spread guesses against one account across multiple IP addresses.

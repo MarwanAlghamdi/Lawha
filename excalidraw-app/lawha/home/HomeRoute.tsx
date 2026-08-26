@@ -71,6 +71,7 @@ import { LawhaHomeBar } from "./LawhaHomeBar";
 import { LawhaImportModal } from "./LawhaImportModal";
 import { LawhaSelectionBar } from "./LawhaSelectionBar";
 import { LawhaTagModal } from "./LawhaTagModal";
+import { LawhaTrash } from "./LawhaTrash";
 import { LawhaTransferReport } from "./LawhaTransferReport";
 import { useBoardDrag } from "./useBoardDrag";
 import { shapeCountsOf, useBoardThumbnails } from "./useBoardThumbnails";
@@ -171,6 +172,17 @@ export const HomeRoute = () => {
   const [sort, setSort] = useState<Sort>("recent");
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
   const [folder, setFolder] = useState<FolderFilter>(ALL_FOLDERS);
+  /**
+   * Whether the grid has been replaced by the trash (ADR 0029).
+   *
+   * A boolean beside `folder` rather than a third `FolderFilter` variant. The
+   * trash is a different list — different endpoint, rows that are not
+   * `BoardListEntry` — and putting it in the filter union would have carried a
+   * trashed board into `matchBoards`, `sortBoards`, the selection bar and the
+   * drag handlers, every one of which is one missing `case` away from showing
+   * a deleted board on the dashboard or acting on one.
+   */
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [modal, setModal] = useState<Modal | null>(null);
@@ -506,27 +518,61 @@ export const HomeRoute = () => {
     }
   };
 
-  const forgetLocally = async (board: BoardListEntry) => {
-    // The key, the local cache and the decrypted preview are all useless once
-    // the row is gone, and leaving them is a copy of the board sitting in the
-    // browser for ever.
-    await forgetBoardKey(board.id);
+  /**
+   * The local traces a delete may take, because the server can hand them back.
+   *
+   * **Split out of `forgetLocally` when the trash arrived (ADR 0029), and the
+   * split is the whole safety of the feature.** This used to be one function
+   * that ran on delete and threw away four things. Two of them the server can
+   * reproduce on the next open — the scene cache and the thumbnail are both
+   * derived from the board's own scene — and two of them it cannot:
+   *
+   *  - `forgetBoardKey` is, for the handful of boards still stored as
+   *    ciphertext, the **last copy in existence** (see `data/boardKeys.ts`).
+   *    Dropping it on a soft delete would mean restore returned a board that
+   *    opens to nothing, permanently, and the dashboard would show it as a
+   *    perfectly normal board while it did.
+   *  - the undo history lives only in this browser (ADR 0019). Nothing on the
+   *    server has a copy, so a delete-then-restore would silently take work
+   *    the user never asked to lose.
+   *
+   * Neither belongs on a path whose entire point is that it can be undone. The
+   * privacy reasoning of the original comment survives intact for the two that
+   * stay here: the local scene copy is cleared at the moment the board leaves
+   * the dashboard, and it costs nothing, because a restore rebuilds it.
+   */
+  const forgetRebuildable = (board: BoardListEntry) => {
     clearBoardCache(board.id);
     forgetBoardThumbnail(board.id);
-    // The undo history is the same argument, only stronger: it is the one of
-    // the four that also holds content the user *deleted* off the board
-    // before deleting the board itself, and it survives until the entry cap
-    // happens to trim it — which, on a board nobody opens again, is never.
-    // Not keyed to the signed-in account: `clearHistoryForBoard` takes every
-    // account's copy in this browser, because the board is gone server-side
-    // for all of them (ADR 0019's Risk 4, on the delete path).
-    await clearHistoryForBoard(board.id);
+  };
+
+  /**
+   * Everything this browser holds about a board that is gone for good.
+   *
+   * Reached only from the trash's "Delete for ever", which is the point at
+   * which the server has genuinely destroyed the board and there is nothing
+   * left to restore from — so keeping the key or the history would be keeping
+   * a copy of a deleted board in the browser for ever, which is the thing the
+   * original version of this function existed to prevent.
+   *
+   * `clearHistoryForBoard` is not keyed to the signed-in account: it takes
+   * every account's copy in this browser, because the board is gone
+   * server-side for all of them (ADR 0019's Risk 4, on the delete path).
+   */
+  const forgetLocally = async (boardId: string) => {
+    await forgetBoardKey(boardId);
+    clearBoardCache(boardId);
+    forgetBoardThumbnail(boardId);
+    await clearHistoryForBoard(boardId);
   };
 
   const onDelete = async (board: BoardListEntry) => {
     try {
       await deleteBoard(board.id);
-      await forgetLocally(board);
+      // Rebuildable traces only. See `forgetRebuildable` — a delete is now
+      // reversible for thirty days, and a reversible delete must not destroy
+      // the two things the server cannot give back.
+      forgetRebuildable(board);
       await reload();
     } catch (caught) {
       setError(
@@ -550,7 +596,7 @@ export const HomeRoute = () => {
     for (const board of selectedBoards) {
       try {
         await deleteBoard(board.id);
-        await forgetLocally(board);
+        forgetRebuildable(board);
       } catch {
         failed.push(board.name);
       }
@@ -894,119 +940,145 @@ export const HomeRoute = () => {
               return next;
             })
           }
-          onSelect={setFolder}
+          onSelect={(next) => {
+            // Picking a folder is how you leave the trash. Without this the
+            // column would highlight a folder while the trash stayed on
+            // screen — the sidebar describing a grid that is not there.
+            setIsTrashOpen(false);
+            setFolder(next);
+          }}
           onCreate={onCreateFolder}
           onRename={onRenameFolder}
           onRecolour={onRecolourFolder}
           onDelete={onDeleteFolder}
           drag={drag}
+          isTrashActive={isTrashOpen}
+          onSelectTrash={() => setIsTrashOpen(true)}
         />
 
-        <div className="lw-home__main">
-          <div className="lw-home__toolbar">
-            {/*
+        {isTrashOpen ? (
+          <div className="lw-home__main">
+            <LawhaTrash
+              onRestored={() => {
+                void reload();
+              }}
+              onPurged={forgetLocally}
+            />
+          </div>
+        ) : (
+          <div className="lw-home__main">
+            <div className="lw-home__toolbar">
+              {/*
               The heading is the path. Ancestors are buttons and drop targets;
               the folder you are standing in is plain text inside the same
               heading, so the whole thing reads as one line to a screen reader
               rather than as a list of links with a title bolted on.
             */}
-            <h1 className="lw-home__heading">
-              {isSearching ? (
-                `Results for “${query.trim()}”`
-              ) : path.length === 0 ? (
-                "All boards"
-              ) : (
-                <>
-                  {path.map((entry, index) =>
-                    index === path.length - 1 ? (
-                      <span key={entry.id} className="lw-home__crumb--current">
-                        {entry.name}
-                      </span>
-                    ) : (
-                      <span key={entry.id}>
-                        <button
-                          type="button"
-                          className={`lw-home__crumb${
-                            drag.isOver(entry.id) ? " lw-home__crumb--over" : ""
-                          }`}
-                          onClick={() => setFolder(inFolder(entry.id))}
-                          {...drag.targetProps(entry.id)}
+              <h1 className="lw-home__heading">
+                {isSearching ? (
+                  `Results for “${query.trim()}”`
+                ) : path.length === 0 ? (
+                  "All boards"
+                ) : (
+                  <>
+                    {path.map((entry, index) =>
+                      index === path.length - 1 ? (
+                        <span
+                          key={entry.id}
+                          className="lw-home__crumb--current"
                         >
                           {entry.name}
-                        </button>
-                        <span className="lw-home__crumb-sep" aria-hidden="true">
-                          ›
                         </span>
-                      </span>
-                    ),
-                  )}
-                </>
-              )}
-            </h1>
+                      ) : (
+                        <span key={entry.id}>
+                          <button
+                            type="button"
+                            className={`lw-home__crumb${
+                              drag.isOver(entry.id)
+                                ? " lw-home__crumb--over"
+                                : ""
+                            }`}
+                            onClick={() => setFolder(inFolder(entry.id))}
+                            {...drag.targetProps(entry.id)}
+                          >
+                            {entry.name}
+                          </button>
+                          <span
+                            className="lw-home__crumb-sep"
+                            aria-hidden="true"
+                          >
+                            ›
+                          </span>
+                        </span>
+                      ),
+                    )}
+                  </>
+                )}
+              </h1>
 
-            <div className="lw-home__tools">
-              <div
-                className="lw-home__views"
-                role="radiogroup"
-                aria-label="How to show the boards"
-              >
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={view === "grid"}
-                  className={`lw-home__view${
-                    view === "grid" ? " lw-home__view--on" : ""
-                  }`}
-                  onClick={() => setView("grid")}
+              <div className="lw-home__tools">
+                <div
+                  className="lw-home__views"
+                  role="radiogroup"
+                  aria-label="How to show the boards"
                 >
-                  Tiles
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={view === "list"}
-                  className={`lw-home__view${
-                    view === "list" ? " lw-home__view--on" : ""
-                  }`}
-                  onClick={() => setView("list")}
-                >
-                  Details
-                </button>
-              </div>
-
-              <div
-                className="lw-home__segmented"
-                role="radiogroup"
-                aria-label="Which boards"
-              >
-                {(["all", "shared", "private"] as const).map((option) => (
                   <button
-                    key={option}
                     type="button"
                     role="radio"
-                    aria-checked={visibility === option}
-                    className={`lw-home__segment${
-                      visibility === option ? " lw-home__segment--on" : ""
+                    aria-checked={view === "grid"}
+                    className={`lw-home__view${
+                      view === "grid" ? " lw-home__view--on" : ""
                     }`}
-                    onClick={() => setVisibility(option)}
+                    onClick={() => setView("grid")}
                   >
-                    {option === "all" ? `All ${list.boards.length}` : option}
+                    Tiles
                   </button>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={view === "list"}
+                    className={`lw-home__view${
+                      view === "list" ? " lw-home__view--on" : ""
+                    }`}
+                    onClick={() => setView("list")}
+                  >
+                    Details
+                  </button>
+                </div>
 
-              <select
-                className="lw-select lw-home__sort"
-                aria-label="Sort boards"
-                value={sort}
-                onChange={(event) => setSort(event.target.value as Sort)}
-              >
-                <option value="recent">Last edited</option>
-                <option value="name">Name A–Z</option>
-                <option value="shapes">Most shapes</option>
-              </select>
+                <div
+                  className="lw-home__segmented"
+                  role="radiogroup"
+                  aria-label="Which boards"
+                >
+                  {(["all", "shared", "private"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      role="radio"
+                      aria-checked={visibility === option}
+                      className={`lw-home__segment${
+                        visibility === option ? " lw-home__segment--on" : ""
+                      }`}
+                      onClick={() => setVisibility(option)}
+                    >
+                      {option === "all" ? `All ${list.boards.length}` : option}
+                    </button>
+                  ))}
+                </div>
 
-              {/*
+                <select
+                  className="lw-select lw-home__sort"
+                  aria-label="Sort boards"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as Sort)}
+                >
+                  <option value="recent">Last edited</option>
+                  <option value="name">Name A–Z</option>
+                  <option value="shapes">Most shapes</option>
+                </select>
+
+                {/*
                 The way to widen a selection, and the way out of one — not the
                 way into one.
 
@@ -1020,147 +1092,147 @@ export const HomeRoute = () => {
                 Still reads "Clear" when everything on screen is already
                 picked, so the label always names what the click will do.
               */}
-              {visible.length > 0 && selected.size > 0 ? (
-                <button
-                  type="button"
-                  className="lw-btn lw-home__select-all"
-                  onClick={onSelectAll}
-                >
-                  {everySelected ? "Clear" : `Select all ${visible.length}`}
-                </button>
-              ) : null}
+                {visible.length > 0 && selected.size > 0 ? (
+                  <button
+                    type="button"
+                    className="lw-btn lw-home__select-all"
+                    onClick={onSelectAll}
+                  >
+                    {everySelected ? "Clear" : `Select all ${visible.length}`}
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
 
-          {/*
+            {/*
             One line, only when it has something to add. It used to be a
             standing paragraph of advice that never changed, sitting between the
             filters and the boards on every visit — a strip of chrome that took
             a row of grid from everyone permanently in order to tell each person
             the same thing once.
           */}
-          {isSearching ? (
-            <p className="lw-home__subtitle">
-              Searching every folder. Each result says where it is filed.
-            </p>
-          ) : null}
+            {isSearching ? (
+              <p className="lw-home__subtitle">
+                Searching every folder. Each result says where it is filed.
+              </p>
+            ) : null}
 
-          {tags.length > 0 ? (
-            <div className="lw-home__tags">
-              <span className="lw-home__tags-label">Tags</span>
-              <button
-                type="button"
-                className={`lw-chip lw-home__tag${
-                  activeTagId === null ? " lw-home__tag--on" : ""
-                }`}
-                onClick={() => setActiveTagId(null)}
-              >
-                all
-              </button>
-              {tags.map((tag) => (
+            {tags.length > 0 ? (
+              <div className="lw-home__tags">
+                <span className="lw-home__tags-label">Tags</span>
                 <button
-                  key={tag.id}
                   type="button"
                   className={`lw-chip lw-home__tag${
-                    activeTagId === tag.id ? " lw-home__tag--on" : ""
+                    activeTagId === null ? " lw-home__tag--on" : ""
                   }`}
-                  style={{ color: tagColor(tag.colorIndex) }}
-                  onClick={() =>
-                    setActiveTagId(activeTagId === tag.id ? null : tag.id)
-                  }
+                  onClick={() => setActiveTagId(null)}
                 >
-                  {tag.name} · {tag.boardCount}
+                  all
                 </button>
-              ))}
-            </div>
-          ) : null}
-
-          {error ? (
-            <p className="lw-inline-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          {report ? (
-            <LawhaTransferReport
-              report={report}
-              onDismiss={() => setReport(null)}
-            />
-          ) : null}
-
-          {/* Subfolders sit above the boards, so going down a level is a click
-              on the thing you are looking at rather than a hunt in the tree. */}
-          {!isSearching && subfolders.length > 0 ? (
-            <div className="lw-home__tiles">
-              <span className="lw-home__tiles-label">Subfolders</span>
-              <div className="lw-home__tiles-grid">
-                {subfolders.map((entry) => (
-                  <LawhaFolderTile
-                    key={entry.id}
-                    folder={entry}
-                    count={counts.get(entry.id) ?? 0}
-                    subfolderCount={
-                      folders.filter((other) => other.parentId === entry.id)
-                        .length
+                {tags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className={`lw-chip lw-home__tag${
+                      activeTagId === tag.id ? " lw-home__tag--on" : ""
+                    }`}
+                    style={{ color: tagColor(tag.colorIndex) }}
+                    onClick={() =>
+                      setActiveTagId(activeTagId === tag.id ? null : tag.id)
                     }
-                    onOpen={() => setFolder(inFolder(entry.id))}
-                    drag={drag}
+                  >
+                    {tag.name} · {tag.boardCount}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {error ? (
+              <p className="lw-inline-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            {report ? (
+              <LawhaTransferReport
+                report={report}
+                onDismiss={() => setReport(null)}
+              />
+            ) : null}
+
+            {/* Subfolders sit above the boards, so going down a level is a click
+              on the thing you are looking at rather than a hunt in the tree. */}
+            {!isSearching && subfolders.length > 0 ? (
+              <div className="lw-home__tiles">
+                <span className="lw-home__tiles-label">Subfolders</span>
+                <div className="lw-home__tiles-grid">
+                  {subfolders.map((entry) => (
+                    <LawhaFolderTile
+                      key={entry.id}
+                      folder={entry}
+                      count={counts.get(entry.id) ?? 0}
+                      subfolderCount={
+                        folders.filter((other) => other.parentId === entry.id)
+                          .length
+                      }
+                      onOpen={() => setFolder(inFolder(entry.id))}
+                      drag={drag}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {isLoading ? (
+              <span className="lw-field__hint">Loading your boards…</span>
+            ) : view === "list" ? (
+              <div className="lw-board-list">
+                <div className="lw-board-list__head" aria-hidden="true">
+                  <span />
+                  <span>Name</span>
+                  <span>Folder</span>
+                  <span>Tags</span>
+                  <span>Shapes</span>
+                  <span>Modified</span>
+                  <span />
+                </div>
+                {visible.map((board) => (
+                  <LawhaBoardRow
+                    key={board.id}
+                    {...cardProps(board)}
+                    path={pathLabel(board.folderId)}
                   />
                 ))}
               </div>
-            </div>
-          ) : null}
+            ) : (
+              <div className="lw-home__grid">
+                {visible.map((board) => (
+                  <LawhaBoardCard
+                    key={board.id}
+                    {...cardProps(board)}
+                    // Only under a search: inside a folder every card has the
+                    // same path and repeating it on all of them is noise.
+                    path={isSearching ? pathLabel(board.folderId) : null}
+                  />
+                ))}
 
-          {isLoading ? (
-            <span className="lw-field__hint">Loading your boards…</span>
-          ) : view === "list" ? (
-            <div className="lw-board-list">
-              <div className="lw-board-list__head" aria-hidden="true">
-                <span />
-                <span>Name</span>
-                <span>Folder</span>
-                <span>Tags</span>
-                <span>Shapes</span>
-                <span>Modified</span>
-                <span />
+                <button
+                  type="button"
+                  className="lw-home__new-tile"
+                  onClick={onNewBoard}
+                >
+                  <span className="lw-home__new-tile-mark" aria-hidden="true">
+                    +
+                  </span>
+                  <span className="lw-home__new-tile-label">Blank board</span>
+                  <span className="lw-home__new-tile-note">
+                    private until you send a link
+                  </span>
+                </button>
               </div>
-              {visible.map((board) => (
-                <LawhaBoardRow
-                  key={board.id}
-                  {...cardProps(board)}
-                  path={pathLabel(board.folderId)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="lw-home__grid">
-              {visible.map((board) => (
-                <LawhaBoardCard
-                  key={board.id}
-                  {...cardProps(board)}
-                  // Only under a search: inside a folder every card has the
-                  // same path and repeating it on all of them is noise.
-                  path={isSearching ? pathLabel(board.folderId) : null}
-                />
-              ))}
+            )}
 
-              <button
-                type="button"
-                className="lw-home__new-tile"
-                onClick={onNewBoard}
-              >
-                <span className="lw-home__new-tile-mark" aria-hidden="true">
-                  +
-                </span>
-                <span className="lw-home__new-tile-label">Blank board</span>
-                <span className="lw-home__new-tile-note">
-                  private until you send a link
-                </span>
-              </button>
-            </div>
-          )}
-
-          {/*
+            {/*
             Where to send a bug, under the last row of boards.
 
             In the scrolling column rather than fixed to the viewport: this is
@@ -1186,24 +1258,25 @@ export const HomeRoute = () => {
             only reach once you are already signed in. "Found a bug? Tell
             somebody." is furniture.
           */}
-          {hasLawhaContact() ? (
-            <footer className="lw-home__contact">
-              <span>{LAWHA_CONTACT_PROMPT}</span>
-              <span>
-                Message <strong>{LAWHA_CONTACT_HANDLE}</strong> on{" "}
-                {LAWHA_CONTACT_CHANNEL}.
-              </span>
-            </footer>
-          ) : null}
+            {hasLawhaContact() ? (
+              <footer className="lw-home__contact">
+                <span>{LAWHA_CONTACT_PROMPT}</span>
+                <span>
+                  Message <strong>{LAWHA_CONTACT_HANDLE}</strong> on{" "}
+                  {LAWHA_CONTACT_CHANNEL}.
+                </span>
+              </footer>
+            ) : null}
 
-          {!isLoading && list.boards.length > 0 && visible.length === 0 ? (
-            <p className="lw-home__empty">
-              {isSearching
-                ? "Nothing matches that search, in any folder."
-                : "Nothing here yet. Drag a board in, or make one."}
-            </p>
-          ) : null}
-        </div>
+            {!isLoading && list.boards.length > 0 && visible.length === 0 ? (
+              <p className="lw-home__empty">
+                {isSearching
+                  ? "Nothing matches that search, in any folder."
+                  : "Nothing here yet. Drag a board in, or make one."}
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/*

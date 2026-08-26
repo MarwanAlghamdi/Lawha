@@ -412,8 +412,66 @@ export const duplicateBoard = async (
     })
   ).board;
 
+/**
+ * Deletes a board — into the trash, where it waits (ADR 0029).
+ *
+ * The endpoint and the wording are both unchanged from when this was
+ * permanent, and deliberately: nothing about the *call site* changed. What
+ * changed is that the server now keeps the row for a retention window instead
+ * of hiding it for ever, so the caller's obligations changed — see the note on
+ * `forgetLocally` in `HomeRoute`, which used to throw away the local copy here
+ * and no longer may.
+ */
 export const deleteBoard = async (boardId: string): Promise<void> => {
   await json(`/boards/${boardId}`, { method: "DELETE" });
+};
+
+/**
+ * A board in the trash (ADR 0029).
+ *
+ * `purgeAt` is the server's answer, not arithmetic done here. The retention
+ * window is a deployment setting the client cannot read, so a client that
+ * added thirty days itself would confidently print a date the sweep does not
+ * agree with. `null` means this deployment purges nothing.
+ */
+export interface TrashedBoard {
+  id: string;
+  name: string;
+  deletedAt: number;
+  updatedAt: number;
+  purgeAt: number | null;
+}
+
+export interface TrashList {
+  boards: TrashedBoard[];
+  /**
+   * Sent even when `boards` is empty, so the screen can explain the rule
+   * before there is anything to lose by not knowing it. 0 means never.
+   */
+  retentionDays: number;
+}
+
+export const listTrashedBoards = async (): Promise<TrashList> =>
+  json<TrashList>("/boards/trash");
+
+/** Takes a board back out of the trash. Owner only; 404 if it was not in it. */
+export const restoreBoard = async (boardId: string): Promise<BoardSummary> =>
+  (
+    await json<{ board: BoardSummary }>(`/boards/${boardId}/restore`, {
+      method: "POST",
+    })
+  ).board;
+
+/**
+ * Deletes a trashed board for good, now.
+ *
+ * A separate path from `deleteBoard` rather than a flag on it, because this is
+ * the one call in this file with no undo and it should not be reachable by
+ * getting an argument wrong. The server refuses it for any board that is not
+ * already in the trash.
+ */
+export const purgeBoard = async (boardId: string): Promise<void> => {
+  await json(`/boards/${boardId}/permanent`, { method: "DELETE" });
 };
 
 export const listTags = async (): Promise<TagSummary[]> =>

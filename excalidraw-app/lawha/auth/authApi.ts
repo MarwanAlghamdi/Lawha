@@ -55,6 +55,17 @@ export interface LawhaUser {
    * `disabledAt: null` are the same fact told with different amounts of it.
    */
   disabledAt: number | null;
+  /**
+   * When an administrator deleted this account, or null (ADR 0031).
+   *
+   * Only ever non-null in the administration list — everywhere else this shape
+   * describes a signed-in account, and a deleted account cannot sign in.
+   *
+   * Distinct from `disabledAt`, and both can be set: an account turned off in
+   * March and deleted in April comes back turned off if the deletion is undone,
+   * because those were two decisions and only one is being reversed.
+   */
+  deletedAt: number | null;
   createdAt: number;
 }
 
@@ -358,6 +369,8 @@ export interface LawhaAdminConfig {
   secureCookiesEffective: boolean;
   masterPasswordConfigured: boolean;
   sessionTtlDays: number;
+  /** Days a deleted board stays restorable. 0 = kept for ever (ADR 0029). */
+  trashRetentionDays: number;
   dbPath: string;
   filesDir: string;
   /** Real accounts; the shared `anonymous` stand-in is machinery, not a person. */
@@ -461,6 +474,41 @@ export const adminRevokeSessions = async (userId: string): Promise<number> => {
 };
 
 /** Stops an account, or starts it again. Reversible; destroys nothing. */
+/**
+ * Deletes an account — into a thirty-day window (ADR 0031).
+ *
+ * `username` is the name the administrator typed back, and the server checks
+ * it against the account named in the path. It is not authentication: the
+ * admin session already provided that. It is evidence that whoever pressed the
+ * button read *which* row they had selected, which is the thing that actually
+ * goes wrong.
+ *
+ * Returns the updated account rather than nothing, so the list can redraw the
+ * row as deleted-and-restorable instead of dropping it — a row that vanishes
+ * gives an administrator who mis-clicked nowhere to click Restore.
+ */
+export const adminDeleteAccount = async (
+  userId: string,
+  username: string,
+): Promise<LawhaUser> => {
+  const { user } = await request<{ user: LawhaUser }>(
+    `/admin/users/${userId}`,
+    { method: "DELETE", json: { username } },
+  );
+  return user;
+};
+
+/** Takes an account back out of the trash. Does not re-enable a disabled one. */
+export const adminRestoreAccount = async (
+  userId: string,
+): Promise<LawhaUser> => {
+  const { user } = await request<{ user: LawhaUser }>(
+    `/admin/users/${userId}/restore`,
+    { method: "POST" },
+  );
+  return user;
+};
+
 export const adminSetDisabled = async (
   userId: string,
   disabled: boolean,

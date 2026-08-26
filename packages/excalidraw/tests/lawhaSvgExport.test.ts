@@ -95,6 +95,63 @@ describe("lawha SVG export", () => {
     expect(html).toContain(">16<");
   });
 
+  it("exports every axis of a four-dimensional tensor", async () => {
+    const html = await exportOne(
+      newTensorElement({
+        x: 0,
+        y: 0,
+        width: 280,
+        height: 200,
+        dims: [8, 64, 32, 16],
+      }),
+    );
+
+    // The pinned 3-D case above stayed green through the whole period in which
+    // a 4-D tensor lost its last axis, because every tensor fixture in this
+    // repo was 3-D. The batch dimension is written as a multiplier and the
+    // trailing three go on the faces.
+    expect(html).not.toContain(PLACEHOLDER);
+    expect(html).toContain(">8 ×<");
+    expect(html).toContain(">64<");
+    expect(html).toContain(">32<");
+    expect(html).toContain(">16<");
+  });
+
+  it("exports a one-dimensional tensor with no empty label beside it", async () => {
+    const html = await exportOne(
+      newTensorElement({
+        x: 0,
+        y: 0,
+        width: 240,
+        height: 120,
+        dims: [512],
+      }),
+    );
+
+    expect(html).toContain(">512<");
+    // The missing second axis used to be drawn as an empty string at a real
+    // coordinate, which reaches the file as a `<text>` node with no content.
+    expect(html).not.toContain("></text>");
+  });
+
+  it("fades a stacked tensor's ghosts in the export, as the canvas does", async () => {
+    const html = await exportOne(
+      newTensorElement({
+        x: 0,
+        y: 0,
+        width: 280,
+        height: 200,
+        dims: [8, 64, 32, 16],
+      }),
+    );
+
+    // Nine shapes: three faces per box, three boxes. The alpha arithmetic this
+    // replaced handled a count of 1 or 3 only, so everything behind the front
+    // box exported fully opaque while the screen showed it faded.
+    expect(html).toContain('fill-opacity="0.3"');
+    expect(html).toContain('fill-opacity="0.55"');
+  });
+
   it("exports a code block's source, coloured", async () => {
     const html = await exportOne(
       newCodeElement({

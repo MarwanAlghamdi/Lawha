@@ -105,6 +105,13 @@ export class MembersRepository {
            FROM users u
           WHERE u.username_lower LIKE ?
             AND u.username_lower <> 'anonymous'
+            -- Not an account somebody is about to be destroyed (ADR 0031).
+            -- Sharing a board with an account that is twelve days from being
+            -- swept is an invitation to a collaboration that ends without
+            -- explanation. Deliberately narrower than disabled_at, which is
+            -- reversible and stays offerable: a colleague on leave is still
+            -- somebody you may want on the board when they come back.
+            AND u.deleted_at IS NULL
             AND u.id NOT IN (SELECT user_id FROM board_members WHERE board_id = ?)
           ORDER BY u.username_lower
           LIMIT ?`,

@@ -6,6 +6,8 @@ import { createApp } from "./http/app.js";
 import { createSocketAuthenticator } from "./http/middleware/session.js";
 import { resolveAnonymousUser } from "./lib/anonymousUser.js";
 import { seedFirstAdmin } from "./lib/firstBootAdmin.js";
+import { startAccountSweep } from "./lib/accountSweep.js";
+import { startTrashSweep } from "./lib/trashSweep.js";
 import { createSocketServer } from "./socket/index.js";
 
 /**
@@ -99,6 +101,19 @@ const sessionSweep = setInterval(() => {
 }, 60 * 60 * 1000);
 sessionSweep.unref();
 
+// The other half of "deleted": a board sits in the trash for
+// LAWHA_TRASH_RETENTION_DAYS and is then removed for good, images and all
+// (ADR 0029). Runs once here and hourly after — see `startTrashSweep` for why
+// the immediate pass matters and why every pass is wrapped.
+const trashSweep = startTrashSweep(ctx);
+void trashSweep;
+
+// And the same for accounts an administrator deleted (ADR 0031). A separate
+// timer rather than one pass over both, because the two sweeps destroy
+// different things and a failure in one must not skip the other.
+const accountSweep = startAccountSweep(ctx);
+void accountSweep;
+
 // Before the promotion below, not after: on a genuinely empty database this is
 // what creates the account that the promotion would otherwise report as
 // missing. It is a no-op, and silent, once any account exists.
@@ -112,6 +127,17 @@ if (config.adminUsername) {
     process.stdout.write(
       `lawha: LAWHA_ADMIN_USERNAME=${config.adminUsername} has no account yet;` +
         " it will be promoted once that account is created.\n",
+    );
+  } else if (row.deleted_at !== null) {
+    // The one path that could still produce an administrator who cannot sign
+    // in: `POST /admin/users/:id/admin` refuses a deleted account, and this
+    // ran on every boot without asking (ADR 0031). Reported rather than done
+    // silently, because LAWHA_ADMIN_USERNAME is the documented way back into a
+    // locked-out deployment and an operator setting it deserves to know why it
+    // did nothing.
+    process.stdout.write(
+      `lawha: LAWHA_ADMIN_USERNAME=${config.adminUsername} names a deleted` +
+        " account; restore it from /admin before it can be promoted.\n",
     );
   } else if (row.is_admin !== 1) {
     ctx.users.setAdmin(row.id, true);

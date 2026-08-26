@@ -46,7 +46,7 @@ import {
   renderCodeToSvg,
   renderTableTextToSvg,
   renderTensorTextToSvg,
-  TENSOR_SVG_FACE_ALPHAS as TENSOR_FACE_ALPHAS,
+  tensorShapeAlphas,
 } from "./lawhaSvg";
 
 import type { RenderableElementsMap, SVGRenderConfig } from "../scene/types";
@@ -194,6 +194,11 @@ const renderElementToSvg = (
       const shapes = ShapeCache.generateElementShape(element, renderConfig);
       const group = svgRoot.ownerDocument!.createElementNS(SVG_NS, "g");
 
+      // Hoisted out of the loop: it re-derives the element's geometry, and
+      // the loop runs once per face.
+      const tensorAlphas =
+        element.type === "tensor" ? tensorShapeAlphas(element) : [];
+
       if (element.type === "code") {
         renderCodeToSvg(element, group);
       }
@@ -205,8 +210,13 @@ const renderElementToSvg = (
           MAX_DECIMALS_FOR_SVG_EXPORT,
         );
         if (element.type === "tensor") {
-          const offset = shapes.length - TENSOR_FACE_ALPHAS.length;
-          const alpha = TENSOR_FACE_ALPHAS[index - offset] ?? 1;
+          // Asked, not computed. The arithmetic that used to be here —
+          // `shapes.length - TENSOR_FACE_ALPHAS.length` — was a copy of the
+          // canvas renderer's and worked only for a shape count of 1 or 3, so
+          // a stacked tensor would have exported every ghost at full opacity
+          // while the screen faded them. `tensorShapeAlphas` returns one entry
+          // per shape and both renderers index it directly.
+          const alpha = tensorAlphas[index] ?? 1;
           if (alpha !== 1) {
             drawn.setAttribute("fill-opacity", `${alpha}`);
           }

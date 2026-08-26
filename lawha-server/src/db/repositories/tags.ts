@@ -77,11 +77,25 @@ export class TagsRepository {
         // `color_index` at all. `toPublicTag` reads `color_index`, got
         // undefined, and JSON.stringify drops undefined keys, so the whole
         // field vanished from the response without any error anywhere.
-        `SELECT t.id, t.name, t.color_index, COUNT(bt.board_id) AS boardCount
+        //
+        // `COUNT(b.id)`, NOT `COUNT(bt.board_id)`. The join below is a LEFT
+        // join, so a row whose board fails the predicate survives with every
+        // `b.*` column NULL — and counting the *link* table's column then
+        // counted it anyway, which made the `deleted_at` filter beside it do
+        // nothing at all. A tag chip has been counting boards in the trash
+        // since ADR 0029; counting `b.id` is what the filter was always for.
+        //
+        // The owner clause is the ADR 0031 half: a deleted account's boards
+        // leave the grid, so they must leave the chip above it too.
+        `SELECT t.id, t.name, t.color_index, COUNT(b.id) AS boardCount
            FROM tags t
            LEFT JOIN board_tags bt ON bt.tag_id = t.id
            LEFT JOIN boards b
-             ON b.id = bt.board_id AND b.deleted_at IS NULL
+             ON b.id = bt.board_id
+            AND b.deleted_at IS NULL
+            AND EXISTS (SELECT 1 FROM users o
+                         WHERE o.id = b.owner_id
+                           AND o.deleted_at IS NULL)
           WHERE t.owner_id = ?
           GROUP BY t.id
           ORDER BY t.name`,

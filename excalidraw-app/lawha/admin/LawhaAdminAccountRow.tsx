@@ -23,7 +23,9 @@ export type RowAction =
   | "disable"
   | "enable"
   | "signOut"
-  | "role";
+  | "role"
+  | "delete"
+  | "restore";
 
 interface Confirmation {
   action: RowAction;
@@ -31,6 +33,21 @@ interface Confirmation {
   question: string;
   verb: string;
   danger: boolean;
+  /**
+   * A word the administrator must type before the button unlocks.
+   *
+   * Only Delete uses it, and only Delete should. Every other action on this
+   * row is undone by pressing the other button beside it; this one starts a
+   * thirty-day clock and then takes an account and its boards for good. A
+   * confirm strip is read after the decision — typing the name is the one
+   * thing on this panel that cannot be done without looking at *which* row
+   * you are on, which is the mistake that actually happens.
+   *
+   * The server checks it too, and the server's check is the one that counts
+   * (invariant 21). This is a speed bump on the way to a guarantee, not the
+   * guarantee.
+   */
+  challenge?: string;
 }
 
 const confirmationFor = (
@@ -72,6 +89,14 @@ const confirmationFor = (
         verb: "Turn off",
         danger: true,
       };
+    case "delete":
+      return {
+        action,
+        question: `Delete ${user.username}? Every board they own goes with them — including boards they shared with other people, which disappear from those dashboards immediately. It can be undone from here for 30 days, and then it cannot be undone at all. Type ${user.username} to confirm.`,
+        verb: "Delete account",
+        danger: true,
+        challenge: user.username,
+      };
     case "signOut":
       return {
         action,
@@ -79,10 +104,10 @@ const confirmationFor = (
         verb: "Sign them out",
         danger: false,
       };
-    // Enabling and role changes are reversible in one click and destroy
-    // nothing, so a confirmation would be a speed bump rather than a guard —
-    // and a product that asks about everything gets clicked through on the
-    // one question that mattered.
+    // Enabling, restoring and role changes are reversible in one click and
+    // destroy nothing, so a confirmation would be a speed bump rather than a
+    // guard — and a product that asks about everything gets clicked through on
+    // the one question that mattered.
     default:
       return null;
   }
@@ -104,7 +129,33 @@ interface LawhaAdminAccountRowProps {
    * attributed to its owner. Every action a row can now take is a `RowAction`
    * and carries nothing but which one.
    */
-  onAction: (action: RowAction, user: LawhaUser) => void;
+  onAction: (
+    action: RowAction,
+    user: LawhaUser,
+    /**
+     * What the administrator typed into the confirm strip, when the action
+     * asked for something.
+     *
+     * Threaded through rather than left here, because the server compares it
+     * with the account named in the path — and a container that supplied
+     * `user.username` from the same object it read `user.id` from would make
+     * the two incapable of disagreeing, which is the one thing the check
+     * exists to detect. The value that travels has to be the value a human
+     * typed.
+     */
+    confirmed?: string,
+    /**
+     * Returns `void | Promise<void>` so the container can pass its own async
+     * handler **directly**, with no adapter in the JSX.
+     *
+     * There was one, and it read `(action, target) => void onAction(action,
+     * target)`. A two-parameter function is assignable to a three-parameter
+     * type, so it type-checked perfectly and threw the typed username away on
+     * every delete — the server then received `{"username":""}` and refused
+     * with a raw schema error. Nothing but driving the real panel found it.
+     * Removing the adapter removes the whole class.
+     */
+  ) => void | Promise<void>;
 }
 
 export const LawhaAdminAccountRow = ({
@@ -115,12 +166,23 @@ export const LawhaAdminAccountRow = ({
   onAction,
 }: LawhaAdminAccountRowProps) => {
   const [confirming, setConfirming] = useState<Confirmation | null>(null);
+  const [typed, setTyped] = useState("");
 
   const disabled = user.disabledAt !== null;
+  const deleted = user.deletedAt !== null;
+
+  // Case-insensitive, matching the server, which compares normalised
+  // usernames. Requiring the exact display casing would reject a correct
+  // confirmation, and a box that rejects the right answer teaches people to
+  // stop reading it.
+  const challengeMet =
+    !confirming?.challenge ||
+    typed.trim().toLowerCase() === confirming.challenge.toLowerCase();
 
   const run = (action: RowAction) => {
     const confirmation = confirmationFor(action, user);
     if (confirmation) {
+      setTyped("");
       setConfirming(confirmation);
       return;
     }
@@ -141,6 +203,9 @@ export const LawhaAdminAccountRow = ({
           <span className="lw-chip lw-chip--orange">admin</span>
         ) : null}
         {disabled ? <span className="lw-chip">turned off</span> : null}
+        {deleted ? (
+          <span className="lw-chip lw-chip--danger">deleted</span>
+        ) : null}
       </div>
 
       {confirming ? (
@@ -151,6 +216,22 @@ export const LawhaAdminAccountRow = ({
          */
         <div className="lw-admin-row__confirm" role="alertdialog">
           <p className="lw-admin-row__confirm-text">{confirming.question}</p>
+          {confirming.challenge ? (
+            <input
+              type="text"
+              className="lw-admin-row__challenge"
+              // Named for what it is rather than labelled "confirm": a screen
+              // reader user gets the same instruction the sighted one reads in
+              // the question above.
+              aria-label={`Type ${confirming.challenge} to confirm`}
+              placeholder={confirming.challenge}
+              value={typed}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => setTyped(event.target.value)}
+            />
+          ) : null}
           <div className="lw-actions">
             <button
               type="button"
@@ -162,16 +243,42 @@ export const LawhaAdminAccountRow = ({
             <button
               type="button"
               className={`lw-btn${confirming.danger ? " lw-btn--danger" : ""}`}
-              disabled={busy}
+              disabled={busy || !challengeMet}
               onClick={() => {
                 const { action } = confirming;
+                const confirmed = typed.trim();
                 setConfirming(null);
-                onAction(action, user);
+                onAction(action, user, confirmed || undefined);
               }}
             >
               {confirming.verb}
             </button>
           </div>
+        </div>
+      ) : deleted ? (
+        /*
+         * A deleted account offers Restore and nothing else.
+         *
+         * Not the usual bar with everything greyed out. Reset, lock-and-reset,
+         * sign-out, turn-off and the role toggle are all refused by
+         * `assertNotDeleted` in `admin.ts` for an account in the trash, so
+         * rendering them disabled would say "these are things you could do
+         * here" about five things you cannot (invariant 24). One row, one
+         * remaining decision.
+         */
+        <div className="lw-admin-row__actions">
+          <span className="lw-admin-row__note">
+            Deleted. Their boards are gone from everyone&apos;s dashboard, and
+            all of it is destroyed for good when the window closes.
+          </span>
+          <button
+            type="button"
+            className="lw-btn"
+            disabled={busy}
+            onClick={() => run("restore")}
+          >
+            Restore
+          </button>
         </div>
       ) : (
         <div className="lw-admin-row__actions">
@@ -286,6 +393,33 @@ export const LawhaAdminAccountRow = ({
             onClick={() => run(disabled ? "enable" : "disable")}
           >
             {disabled ? "Turn back on" : "Turn off"}
+          </button>
+
+          {/*
+            Last in the bar, and the only control here that ends anything.
+            Refused by the server for your own account and for an
+            administrator, so both are refused here too rather than offered and
+            then rejected (invariant 24) — and the reason is in the tooltip,
+            because a disabled button with no explanation reads as a bug.
+
+            "Turn off" sits immediately before it and is the answer most of the
+            time: it stops the account dead, keeps every board, and is undone
+            by pressing it again. This one takes the boards too.
+          */}
+          <button
+            type="button"
+            className="lw-btn lw-btn--danger"
+            disabled={busy || isYou || user.isAdmin}
+            title={
+              isYou
+                ? "Delete your own account from your account page."
+                : user.isAdmin
+                ? "This account is an administrator. Revoke that first."
+                : undefined
+            }
+            onClick={() => run("delete")}
+          >
+            Delete
           </button>
         </div>
       )}
