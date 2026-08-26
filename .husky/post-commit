@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keep the code graphs in step with the tree.
+#
+# `core.hooksPath` is `.husky`, so `.git/hooks/` is never consulted — this file
+# is the only place a post-commit hook will run from in this clone.
+#
+# Returns immediately: the script re-execs itself detached, takes a lock, and
+# skips entirely mid-rebase or mid-merge. It cannot fail a commit; see the
+# header of the script for why each of those matters.
+[ -x "$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" ] || exit 0
+"$(git rev-parse --show-toplevel)/scripts/refresh-graphs.sh" || true
