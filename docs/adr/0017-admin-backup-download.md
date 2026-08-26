@@ -16,6 +16,8 @@ This is the load-bearing decision and it cost something real: a forced backup th
 
 `backupCoverage.test.ts` asserts the `:ro`, and asserts that no second writable mount of the same path exists beside it.
 
+> **Amended 2026-08-26.** `backupCoverage.test.ts` went with `59930dbf`, and for twelve days the sentence above described a guard that did not exist — the `:ro` was still in `docker-compose.yml`, with nothing to notice if it stopped being. Re-pinned in `lawha-server/scripts/deploymentConfig.test.mjs` as "the backup archive is read-only in every service that can be reached", and stated structurally rather than by service name: whoever declares `ports:` or `expose:` must mount the archive `:ro`, exactly one service may mount it writable, that one must declare neither, and both must resolve to the same host directory. Five mutations were introduced — dropping the `:ro`, making the writer read-only, splitting the host paths, giving the writer an `expose:`, and giving the published service a writable mount — and all five were caught.
+
 **A download is a tar of the database _and_ the blobs.** `backup.mjs` is right to keep them apart — blobs are content-addressed and belong in an append-only mirror rather than duplicated into every nightly snapshot. But a person clicking Download means "give me the thing that restores this", and half of it with a note attached is how a restore fails at the worst possible moment.
 
 Archived backups are paired with the backup container's mirror rather than the live `files/` directory, because the mirror never deletes: an old database can reference a blob the live deployment has since dropped, and pairing a three-month-old database with today's blobs restores boards whose images have quietly gone.

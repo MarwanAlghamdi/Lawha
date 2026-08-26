@@ -21,7 +21,7 @@ The Vite dev server proxies `/api` and `/socket.io` to lawha-server, so the brow
 | `yarn lan` | Build the app, serve it from lawha-server. Use this for testing against a tunnel; modules over a tunnel are slow. |
 | `yarn test:all` | **Does NOT include** `test:server` or `test:typecheck:server`. See below. |
 | `yarn test:app` | Every vitest suite — 131 files, 2050 tests. Excalidraw's editor tests under `packages/`, and Lawha's own under `lawha-server/src/` and `excalidraw-app/lawha/`. |
-| `yarn test:server` | A different runner: `node --test scripts/*.test.mjs` in lawha-server — backup, restore, encrypt-db and the deployment-config pins, 4 files, 125 tests |
+| `yarn test:server` | A different runner: `node --test scripts/*.test.mjs` in lawha-server — backup, restore, encrypt-db and the deployment-config pins, 4 files, 127 tests |
 | `yarn test:typecheck` | TypeScript over app + packages |
 | `yarn test:typecheck:server` | TypeScript `--noEmit` in lawha-server |
 | `yarn test:code` | ESLint `--max-warnings=0` |
@@ -46,7 +46,7 @@ Several are integration tests rather than unit tests, and deliberately so: they 
 
 Lawha's editor-side features are covered under `packages/` too, by `lawhaGridObjects.test.tsx` (24) and `lawhaSvgExport.test.ts` (9).
 
-All of that runs under `yarn test:app`, not `yarn test:server`. `vitest.config.mts` excludes only `e2e/**` and `lawha-server/scripts/**`, so `lawha-server/src/**` is collected like any other source directory. `test:server` is `node --test scripts/*.test.mjs` and nothing else — backup, restore, encrypt-db and the deployment-config pins, 4 files and 125 tests. Backup and restore are covered because a silent backup failure has already cost this project real data.
+All of that runs under `yarn test:app`, not `yarn test:server`. `vitest.config.mts` excludes only `e2e/**` and `lawha-server/scripts/**`, so `lawha-server/src/**` is collected like any other source directory. `test:server` is `node --test scripts/*.test.mjs` and nothing else — backup, restore, encrypt-db and the deployment-config pins, 4 files and 127 tests. Backup and restore are covered because a silent backup failure has already cost this project real data.
 
 **Coverage stops there**, and what is left over is still most of the app and the server. There is no request-level harness here, so no route is driven over HTTP at all — the admin account-deletion handler is pulled off the router's layer stack and called directly, and `boardsRouteOrder` reads registration order off that same stack. Sharing, invites, folders and tags have no suite, and the React client has none outside the mermaid parser and the two files above. All of that is held by the typechecker, the linter and review. The Playwright suite in `e2e/` covers sign-in, boards, invites and visual regression, but CI does not run it: `playwright.config.ts` expects a dev server already listening on `localhost:3001`, which CI does not provide. Run it yourself against a running dev server.
 

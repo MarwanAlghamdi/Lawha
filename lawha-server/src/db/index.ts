@@ -261,9 +261,10 @@ export const openDatabase = ({
     //
     // NOTHING CHECKS THIS ORDER. Measured on 2026-08-26 by swapping the two
     // lines and running both gates: `node --test scripts/*.test.mjs` reported
-    // 125/125 pass, and the seven vitest files under `lawha-server/src/`
-    // reported 82/82. Neither reaches this branch — it is entered only when a
-    // key is configured, and no surviving test configures one.
+    // 125/125 pass (127 now — two assertions were added the same day, neither
+    // of them here), and the seven vitest files under `lawha-server/src/`
+    // reported 82/82. Neither gate reaches this branch — it is entered only
+    // when a key is configured, and no surviving test configures one.
     //
     // Two earlier versions of this comment each credited a test that could not
     // catch it. The first named `dbEncryption.test.ts`, which DID pin it and
