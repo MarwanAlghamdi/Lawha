@@ -716,7 +716,7 @@ Only 3001 needs to be reachable. `corepack yarn`, not `yarn` — it is not on PA
 
 `core.hooksPath` is `.husky`, so `.git/hooks/` is never consulted; a hook placed there will not run.
 
-The lock is the point of the script rather than a nicety: the GitNexus index has been corrupted three times with `FTS index 'file_fts' is inconsistent`, twice on a manual run and once after four incremental ones.
+The GitNexus index was corrupted four times with `FTS index 'file_fts' is inconsistent`. **The cause is the WAL auto-checkpoint threshold, not concurrency** — GitNexus said so itself the fourth time: *"LadybugDB failed while rotating/removing WAL checkpoint files. This can happen when auto-checkpoint runs at the default threshold (~16MB)."* At ~12,900 nodes this index checkpoints often enough to hit it, a failed rotation leaves a quarantined `lbug.wal.missing-shadow.*` sidecar, and the *next* run reports the FTS inconsistency. The script exports `GITNEXUS_WAL_CHECKPOINT_THRESHOLD=67108864`, the value the tool's own recovery hint suggests. The lock is still there — two `analyze` runs over one index is a bad idea regardless — but it was never the fix, and three rebuilds were spent chasing the wrong story.
 
 That failure now **repairs itself** — a full clean and rebuild, once, and only for that message. It is safe to do automatically because this index is not data: every node in it is derived from the tree by `analyze`, so a rebuild costs a couple of minutes of CPU in a background process nobody is waiting on. Any other failure is reported and left alone, because "delete it and try again" is not a general answer to an unknown error.
 

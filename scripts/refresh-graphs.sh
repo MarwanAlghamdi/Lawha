@@ -12,10 +12,11 @@
 #  1. NEVER BLOCK THE COMMIT. post-commit runs inside `git commit`, so anything
 #     slow here is felt on every single one. This script re-execs itself
 #     detached and returns immediately.
-#  2. NEVER RUN TWO AT ONCE. GitNexus's index has been corrupted twice with
-#     "FTS index 'file_fts' is inconsistent", each time leaving a quarantined
-#     missing-shadow WAL sidecar behind, and concurrent writers are the likeliest
-#     cause. The lock below is the point of the whole script.
+#  2. NEVER RUN TWO AT ONCE. Two `analyze` runs over one index is a bad idea on
+#     its own terms, so the lock stays. (This comment used to claim concurrency
+#     CAUSED the recurring FTS corruption. It did not — see the WAL checkpoint
+#     threshold below, which is what GitNexus itself blamed once it was asked.
+#     Three rebuilds were spent chasing the wrong story.)
 #  3. SKIP THE STORMS. A 20-commit rebase fires post-commit 20 times, so a
 #     rebase in progress is skipped — `post-rewrite` fires once at the end and
 #     picks it up. A merge or a cherry-pick produces exactly ONE commit and is
@@ -56,6 +57,20 @@ LOCK="$STATE/graph-refresh.lock"
 LOG="$STATE/graph-refresh.log"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
+
+# THE CAUSE OF THE RECURRING CORRUPTION, and it is not concurrency.
+#
+# GitNexus named it in its own log, the fourth time it happened:
+#
+#   LadybugDB failed while rotating/removing WAL checkpoint files.
+#   This can happen when auto-checkpoint runs at the default threshold (~16MB).
+#
+# At ~12,900 nodes and ~39,400 edges this index checkpoints often enough to hit
+# that, and a failed rotation is what leaves the quarantined
+# `lbug.wal.missing-shadow.*` sidecars — and then, on the NEXT run, "FTS index
+# 'file_fts' is inconsistent". 64 MiB is the value the tool's own recovery hint
+# suggests. Overridable, so a small-disk runner can drop to 32 MiB.
+export GITNEXUS_WAL_CHECKPOINT_THRESHOLD="${GITNEXUS_WAL_CHECKPOINT_THRESHOLD:-67108864}"
 
 # --- 3. mid-operation? leave it alone -------------------------------------
 # Only the states that produce a *burst* of commits. MERGE_HEAD and
