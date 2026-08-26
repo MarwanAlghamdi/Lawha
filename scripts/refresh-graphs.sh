@@ -33,18 +33,36 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LOCK="$REPO/.gitnexus/.refresh.lock"
-LOG="$REPO/.gitnexus/refresh.log"
+
+# **NOT inside .gitnexus/**, and that is the whole point of these lines.
+#
+# They lived there, and the self-heal below runs `gitnexus clean --force`, which
+# deletes that directory outright — taking the lock and the log with it, mid-run.
+# Two consequences, both observed:
+#
+#   1. The lock vanished while its owner was still working, so a second refresh
+#      could start immediately. That is exactly the concurrent-writer situation
+#      the lock exists to prevent — and the suspected cause of the very FTS
+#      corruption the self-heal was written to repair. The repair could cause
+#      the fault it repairs.
+#   2. `log()` appends to a directory that no longer exists, silently
+#      (`2>/dev/null || true`), so the repair destroyed its own diagnostics: a
+#      rebuild that cleaned and then failed left no trace and no index.
+#
+# `.git/` is never touched by gitnexus, always exists inside a repository, and
+# is already outside everything git tracks.
+STATE="$(git -C "$REPO" rev-parse --git-dir 2>/dev/null || echo "$REPO/.git")"
+LOCK="$STATE/graph-refresh.lock"
+LOG="$STATE/graph-refresh.log"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG" 2>/dev/null || true; }
 
 # --- 3. mid-operation? leave it alone -------------------------------------
-git_dir="$(git -C "$REPO" rev-parse --git-dir 2>/dev/null || echo "$REPO/.git")"
 # Only the states that produce a *burst* of commits. MERGE_HEAD and
 # CHERRY_PICK_HEAD deliberately absent: one commit each, and they are exactly
 # the moments the tree changes most.
 for state in rebase-merge rebase-apply BISECT_LOG; do
-  if [ -e "$git_dir/$state" ]; then
+  if [ -e "$STATE/$state" ]; then
     log "skipped: $state in progress"
     exit 0
   fi
@@ -57,7 +75,6 @@ if [ "${GRAPH_REFRESH_CHILD:-}" != "1" ]; then
 fi
 
 # --- 2. one at a time ------------------------------------------------------
-mkdir -p "$REPO/.gitnexus" 2>/dev/null || true
 if ! mkdir "$LOCK" 2>/dev/null; then
   # A refresh already running will pick up this commit too — it re-reads the
   # tree when it starts. Queuing a second one buys nothing and risks (2).
@@ -91,13 +108,17 @@ if [ -f "$REPO/.gitnexus/run.cjs" ]; then
     # left alone, because "delete the index and try again" is not a general
     # answer to an unknown error.
     log "gitnexus FAILED with the known FTS corruption — rebuilding from scratch"
-    if (cd "$REPO" \
-      && npx --yes gitnexus@latest clean --force --lbug-sidecars >> "$LOG" 2>&1 \
-      && npx --yes gitnexus@latest clean --force >> "$LOG" 2>&1 \
-      && npx --yes gitnexus@latest analyze >> "$LOG" 2>&1); then
+    # `clean --force` removes .gitnexus/ entirely, so a failure between it and
+    # `analyze` leaves NO index at all — a worse state than the corrupt one it
+    # replaced, and one that happened. The rebuild is therefore verified by
+    # looking for the file it must produce, not by trusting an exit code.
+    (cd "$REPO" && npx --yes gitnexus@latest clean --force --lbug-sidecars >> "$LOG" 2>&1) || true
+    (cd "$REPO" && npx --yes gitnexus@latest clean --force >> "$LOG" 2>&1) || true
+    if (cd "$REPO" && npx --yes gitnexus@latest analyze >> "$LOG" 2>&1) \
+      && [ -f "$REPO/.gitnexus/meta.json" ]; then
       log "gitnexus rebuilt ok"
     else
-      log "gitnexus REBUILD FAILED — needs a human"
+      log "gitnexus REBUILD FAILED AND THE INDEX IS NOW ABSENT — run: npx gitnexus@latest analyze"
     fi
   else
     log "gitnexus FAILED — see the output above this line"
